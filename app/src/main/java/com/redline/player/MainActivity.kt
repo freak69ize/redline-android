@@ -75,7 +75,7 @@ class MainActivity : ComponentActivity() {
         if (screen == Screen.Shelf && isSelectKey(event.keyCode)) {
             val held = event.eventTime - event.downTime
             val longPress = event.isLongPress ||
-                (event.repeatCount > 0 && held >= ViewConfiguration.get(this).longPressTimeout)
+                (event.repeatCount > 0 && held >= ViewConfiguration.getLongPressTimeout())
             if (event.action == KeyEvent.ACTION_DOWN && longPress) {
                 swallowCenterUp = true
                 vm.openMenu()
