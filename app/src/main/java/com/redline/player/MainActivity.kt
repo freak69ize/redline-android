@@ -15,7 +15,7 @@ import com.redline.player.ui.RedlineApp
 class MainActivity : ComponentActivity() {
     private lateinit var vm: LibraryViewModel
     private var folderExcluded = false
-    private var swallowCenterUp = false
+    private var swallowSelectUp = false
 
     private val videoPicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         vm.addVideos(uris)
@@ -73,17 +73,20 @@ class MainActivity : ComponentActivity() {
         if (!::vm.isInitialized) return super.dispatchKeyEvent(event)
         val screen = vm.state.value.screen
         if (screen == Screen.Shelf && isSelectKey(event.keyCode)) {
-            val held = event.eventTime - event.downTime
-            val longPress = event.isLongPress ||
-                (event.repeatCount > 0 && held >= ViewConfiguration.getLongPressTimeout())
-            if (event.action == KeyEvent.ACTION_DOWN && longPress) {
-                swallowCenterUp = true
-                vm.openMenu()
+            val menuOpen = vm.state.value.menuUri != null
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && menuOpen && swallowSelectUp) {
+                swallowSelectUp = false
+            } else if (swallowSelectUp) {
                 return true
-            }
-            if (event.action == KeyEvent.ACTION_UP && swallowCenterUp) {
-                swallowCenterUp = false
-                return true
+            } else if (!menuOpen && event.action == KeyEvent.ACTION_DOWN) {
+                val held = event.eventTime - event.downTime
+                val longPress = event.isLongPress ||
+                    (event.repeatCount > 0 && held >= ViewConfiguration.getLongPressTimeout())
+                if (longPress) {
+                    swallowSelectUp = true
+                    vm.openMenu()
+                    return true
+                }
             }
         }
         if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
