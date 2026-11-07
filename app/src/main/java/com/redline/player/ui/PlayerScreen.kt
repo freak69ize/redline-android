@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -186,12 +186,23 @@ fun PlayerScreen(
                 Text(title, color = Color.White, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { if (exo.isPlaying) exo.pause() else exo.play() }, modifier = Modifier.focusable(false)) {
-                        Icon(
-                            if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = "Play or pause",
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp),
-                        )
+                        if (playing) {
+                            Row(
+                                Modifier.size(22.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(Modifier.size(5.dp, 16.dp).background(Color.White))
+                                Box(Modifier.size(5.dp, 16.dp).background(Color.White))
+                            }
+                        } else {
+                            Icon(
+                                Icons.Filled.PlayArrow,
+                                contentDescription = "Play or pause",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp),
+                            )
+                        }
                     }
                     Text(timeLabel, color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
                     Slider(

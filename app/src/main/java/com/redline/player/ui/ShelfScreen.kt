@@ -35,7 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusGroup
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -124,7 +123,7 @@ private fun VideoRow(
         } else {
             LazyRow(
                 state = listState,
-                modifier = Modifier.fillMaxWidth().focusGroup(),
+                modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = side),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
