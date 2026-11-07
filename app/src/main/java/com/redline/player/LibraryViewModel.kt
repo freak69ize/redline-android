@@ -53,13 +53,16 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun play(uri: String, rowId: String) {
-        _state.value = _state.value.copy(
+        val current = _state.value
+        if (current.menuUri != null && !current.menuArmed) return
+        _state.value = current.copy(
             screen = Screen.Player,
             playingUri = uri,
             playingRowId = rowId,
             focusedUri = uri,
             menuUri = null,
             confirmUri = null,
+            menuArmed = true,
         )
     }
 
@@ -151,11 +154,19 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun openMenu() {
         if (_state.value.screen != Screen.Shelf) return
         val uri = _state.value.focusedUri ?: return
-        _state.value = _state.value.copy(menuUri = uri, confirmUri = null)
+        _state.value = _state.value.copy(menuUri = uri, confirmUri = null, menuArmed = false)
+    }
+
+    fun armMenu() {
+        val current = _state.value
+        if (current.menuUri == null || current.menuArmed) return
+        _state.value = current.copy(menuArmed = true)
     }
 
     fun closeMenu() {
-        _state.value = _state.value.copy(menuUri = null)
+        val current = _state.value
+        if (!current.menuArmed) return
+        _state.value = current.copy(menuUri = null)
     }
 
     fun onVideoEnded() {

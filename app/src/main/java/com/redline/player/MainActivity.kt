@@ -15,7 +15,8 @@ import com.redline.player.ui.RedlineApp
 class MainActivity : ComponentActivity() {
     private lateinit var vm: LibraryViewModel
     private var folderExcluded = false
-    private var swallowSelectUp = false
+    private var selectDown = false
+    private var eatSelectUp = false
 
     private val videoPicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         vm.addVideos(uris)
@@ -73,18 +74,31 @@ class MainActivity : ComponentActivity() {
         if (!::vm.isInitialized) return super.dispatchKeyEvent(event)
         val screen = vm.state.value.screen
         if (screen == Screen.Shelf && isSelectKey(event.keyCode)) {
-            val menuOpen = vm.state.value.menuUri != null
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && menuOpen && swallowSelectUp) {
-                swallowSelectUp = false
-            } else if (swallowSelectUp) {
-                return true
-            } else if (!menuOpen && event.action == KeyEvent.ACTION_DOWN) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                if (!selectDown) {
+                    selectDown = true
+                    eatSelectUp = false
+                }
+                val menuOpen = vm.state.value.menuUri != null
                 val held = event.eventTime - event.downTime
                 val longPress = event.isLongPress ||
                     (event.repeatCount > 0 && held >= ViewConfiguration.getLongPressTimeout())
-                if (longPress) {
-                    swallowSelectUp = true
+                if (!menuOpen && longPress) {
+                    eatSelectUp = true
                     vm.openMenu()
+                    return true
+                }
+                if (selectDown && menuOpen && !vm.state.value.menuArmed) {
+                    eatSelectUp = true
+                    return true
+                }
+                if (eatSelectUp) return true
+            } else if (event.action == KeyEvent.ACTION_UP && selectDown) {
+                val eat = eatSelectUp || (vm.state.value.menuUri != null && !vm.state.value.menuArmed)
+                selectDown = false
+                eatSelectUp = false
+                if (eat) {
+                    vm.armMenu()
                     return true
                 }
             }

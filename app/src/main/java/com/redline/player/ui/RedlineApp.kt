@@ -228,8 +228,18 @@ fun RedlineApp(
             if (menuVideo != null) {
                 var renaming by remember(menuVideo.uri) { mutableStateOf(false) }
                 var draft by remember(menuVideo.uri) { mutableStateOf(menuVideo.title) }
+                val firstMenuButton = remember { FocusRequester() }
                 val moveRows = state.settings.rows.filter { it.kind == "custom" || it.kind == "library" }.sortedBy { it.order }
-                Dialog(onDismissRequest = vm::closeMenu) {
+                LaunchedEffect(state.menuArmed) {
+                    if (state.menuArmed) runCatching { firstMenuButton.requestFocus() }
+                }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.72f))
+                        .focusProperties { canFocus = false },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Column(
                         Modifier
                             .width(340.dp)
@@ -240,22 +250,27 @@ fun RedlineApp(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(menuVideo.title, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        DialogButton("Play") { vm.play(menuVideo.uri, state.playingRowId ?: "library") }
-                        DialogButton(if (menuVideo.favorite) "Remove from favorites" else "Add to favorites") {
-                            vm.toggleFavorite(menuVideo.uri)
+                        DialogButton("Play", firstMenuButton, state.menuArmed) {
+                            vm.play(menuVideo.uri, state.playingRowId ?: "library")
                         }
+                        DialogButton(
+                            if (menuVideo.favorite) "Remove from favorites" else "Add to favorites",
+                            enabled = state.menuArmed,
+                        ) { vm.toggleFavorite(menuVideo.uri) }
                         Text("Move to a row", color = SoftRed, fontSize = 12.sp)
                         moveRows.forEach { row ->
-                            DialogButton("Move to ${row.name}") { vm.moveVideoToRow(menuVideo.uri, row.id) }
+                            DialogButton("Move to ${row.name}", enabled = state.menuArmed) {
+                                vm.moveVideoToRow(menuVideo.uri, row.id)
+                            }
                         }
                         if (renaming) {
                             RedlineTextField(value = draft, onValueChange = { draft = it.take(80) }, label = "Name")
-                            DialogButton("Save name") { vm.renameVideo(menuVideo.uri, draft) }
+                            DialogButton("Save name", enabled = state.menuArmed) { vm.renameVideo(menuVideo.uri, draft) }
                         } else {
-                            DialogButton("Rename video") { renaming = true }
+                            DialogButton("Rename video", enabled = state.menuArmed) { renaming = true }
                         }
-                        DialogButton("Delete from player") { vm.askRemove(menuVideo.uri) }
-                        DialogButton("Close") { vm.closeMenu() }
+                        DialogButton("Delete from player", enabled = state.menuArmed) { vm.askRemove(menuVideo.uri) }
+                        DialogButton("Close", enabled = state.menuArmed) { vm.closeMenu() }
                     }
                 }
             }
@@ -281,11 +296,20 @@ fun RedlineApp(
 }
 
 @Composable
-private fun DialogButton(label: String, onClick: () -> Unit) {
+private fun DialogButton(
+    label: String,
+    focusRequester: FocusRequester? = null,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
     Button(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().tvFocus(),
-        colors = ButtonDefaults.buttonColors(containerColor = Surface2, contentColor = androidx.compose.ui.graphics.Color.White),
+        enabled = enabled,
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .tvFocus(),
+        colors = ButtonDefaults.buttonColors(containerColor = Surface2, contentColor = Color.White),
     ) {
         Text(label)
     }

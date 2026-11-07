@@ -74,6 +74,7 @@ data class UiState(
     val playingRowId: String? = null,
     val focusedUri: String? = null,
     val menuUri: String? = null,
+    val menuArmed: Boolean = true,
     val confirmUri: String? = null,
     val ready: Boolean = false,
     val busy: Boolean = false,
