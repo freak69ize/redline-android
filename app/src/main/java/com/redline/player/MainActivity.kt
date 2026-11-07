@@ -3,6 +3,7 @@ package com.redline.player
 import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.ViewConfiguration
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,30 +69,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER && ::vm.isInitialized && vm.state.value.screen == Screen.Shelf) {
-            event.startTracking()
-        }
-        return super.onKeyDown(keyCode, event)
-    }
-
-    override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER && ::vm.isInitialized && vm.state.value.screen == Screen.Shelf) {
-            swallowCenterUp = true
-            vm.openMenu()
-            return true
-        }
-        return super.onKeyLongPress(keyCode, event)
-    }
-
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (!::vm.isInitialized) return super.dispatchKeyEvent(event)
-        if (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER && event.action == KeyEvent.ACTION_UP && swallowCenterUp) {
-            swallowCenterUp = false
-            return true
+        val screen = vm.state.value.screen
+        if (screen == Screen.Shelf && isSelectKey(event.keyCode)) {
+            val held = event.eventTime - event.downTime
+            val longPress = event.isLongPress ||
+                (event.repeatCount > 0 && held >= ViewConfiguration.get(this).longPressTimeout)
+            if (event.action == KeyEvent.ACTION_DOWN && longPress) {
+                swallowCenterUp = true
+                vm.openMenu()
+                return true
+            }
+            if (event.action == KeyEvent.ACTION_UP && swallowCenterUp) {
+                swallowCenterUp = false
+                return true
+            }
         }
         if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
-        val screen = vm.state.value.screen
         if (screen == Screen.Player) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
@@ -157,5 +152,12 @@ class MainActivity : ComponentActivity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun isSelectKey(keyCode: Int): Boolean {
+        return keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+            keyCode == KeyEvent.KEYCODE_ENTER ||
+            keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ||
+            keyCode == KeyEvent.KEYCODE_BUTTON_A
     }
 }

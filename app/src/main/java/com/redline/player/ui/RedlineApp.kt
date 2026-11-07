@@ -1,7 +1,6 @@
 package com.redline.player.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -134,26 +133,13 @@ fun RedlineApp(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                "Hold a video to favorite, move, rename, or delete.",
+                                "Hold Select on a video to favorite, move, rename, or delete.",
                                 color = Muted,
                                 fontSize = if (tv) 14.sp else 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        Text(
-                            if (state.busy) "Adding…" else "Add videos",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier
-                                .tvFocus(RoundedCornerShape(8.dp))
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(DefaultBg)
-                                .border(1.dp, Color.White, RoundedCornerShape(8.dp))
-                                .clickable(enabled = !state.busy, onClick = onAddVideos)
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                        )
                     }
                     if (!state.ready) {
                         Text("Opening your shelf…", color = Muted, modifier = Modifier.padding(24.dp))
