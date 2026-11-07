@@ -5,7 +5,6 @@ import android.graphics.Typeface
 import android.view.LayoutInflater
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,7 +35,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,10 +70,13 @@ fun PlayerScreen(
     showRemaining: Boolean,
     subtitleScale: Float,
     sleepMinutes: Int,
+    favorite: Boolean,
     commands: Flow<PlayerCommand>,
     onEnded: () -> Unit,
     onSleep: () -> Unit,
     onProgress: (Long) -> Unit,
+    onFavorite: () -> Unit,
+    onChrome: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val exo = remember(uri) {
@@ -103,8 +109,15 @@ fun PlayerScreen(
                     playing = exo.isPlaying
                 }
                 is PlayerCommand.VolumeBy -> exo.volume = (exo.volume + command.delta).coerceIn(0f, 1f)
+                PlayerCommand.Reveal -> Unit
             }
         }
+    }
+    LaunchedEffect(showControls) {
+        onChrome(showControls)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onChrome(false) }
     }
     LaunchedEffect(speed) {
         exo.playbackParameters = PlaybackParameters(speed)
@@ -153,7 +166,15 @@ fun PlayerScreen(
     val shown = if (showRemaining && duration > 0) duration - position else position
     val timeLabel = if (showRemaining && duration > 0) "-${formatDuration(shown)}" else formatDuration(shown)
 
-    Box(Modifier.fillMaxSize().background(Color.Black).focusProperties { canFocus = false }) {
+    val playFocus = remember { FocusRequester() }
+    LaunchedEffect(showControls) {
+        if (showControls) {
+            delay(60)
+            runCatching { playFocus.requestFocus() }
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
         val frame = when (aspect) {
             "16:9" -> Modifier.fillMaxHeight().aspectRatio(16f / 9f, matchHeightConstraintsFirst = true)
             "4:3" -> Modifier.fillMaxHeight().aspectRatio(4f / 3f, matchHeightConstraintsFirst = true)
@@ -180,12 +201,22 @@ fun PlayerScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .background(Color.Black.copy(alpha = 0.45f))
-                    .padding(horizontal = 24.dp, vertical = 16.dp)
-                    .focusProperties { canFocus = false },
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
             ) {
                 Text(title, color = Color.White, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                IconButton(onClick = onFavorite, modifier = Modifier.tvFocus()) {
+                    Icon(
+                        if (favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = "Favorite",
+                        tint = if (favorite) Red else Color.White,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { if (exo.isPlaying) exo.pause() else exo.play() }, modifier = Modifier.focusable(false)) {
+                    IconButton(
+                        onClick = { if (exo.isPlaying) exo.pause() else exo.play() },
+                        modifier = Modifier.focusRequester(playFocus).tvFocus(),
+                    ) {
                         if (playing) {
                             Row(
                                 Modifier.size(22.dp),

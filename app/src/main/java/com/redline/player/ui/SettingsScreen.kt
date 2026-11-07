@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -32,13 +34,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,10 +48,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -100,16 +105,14 @@ fun SettingsScreen(
                 Icon(Icons.Filled.Close, contentDescription = "Close settings", tint = Color.White)
             }
         }
-        Text("Press Back to close. Move with the D-pad. The highlight is white.", color = Muted, fontSize = 12.sp)
+        Text("Press Back to close. Select a text box to type.", color = SoftRed, fontSize = 12.sp)
 
         Section("Shelf")
-        OutlinedTextField(
+        RedlineTextField(
             value = settings.appTitle,
             onValueChange = { onChange(settings.copy(appTitle = it.take(40))) },
-            singleLine = true,
-            label = { Text("Name") },
-            colors = fieldColors(),
-            modifier = Modifier.fillMaxWidth().tvFocus(),
+            label = "Name",
+            modifier = Modifier.fillMaxWidth(),
         )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (settings.logoUri != null) {
@@ -132,29 +135,36 @@ fun SettingsScreen(
 
         Section("Background")
         ColorPicker(settings.backgroundColor) { hex ->
-            onChange(settings.copy(backgroundColor = hex, backdrop = if (settings.usesGif()) settings.backdrop else "solid"))
+            onChange(settings.copy(backgroundColor = hex, backdrop = "solid"))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = onAddGif, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Add GIF") }
+            Button(onClick = onAddGif, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Add GIF", color = Color.White) }
             val gif = gifs.firstOrNull { it.uri == settings.gifId } ?: gifs.firstOrNull()
             if (gif != null && settings.usesGif()) {
                 Text(gif.name, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Button(onClick = { onRemoveGif(gif.uri) }, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Remove") }
+                Button(onClick = { onRemoveGif(gif.uri) }, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Remove", color = Color.White) }
+            } else if (gif != null) {
+                Button(
+                    onClick = { onChange(settings.copy(backdrop = "gif", gifId = gif.uri)) },
+                    modifier = Modifier.tvFocus(),
+                    colors = darkButton(),
+                ) { Text("Use GIF", color = Color.White) }
             }
         }
         if (settings.usesGif()) {
-            Text("Dim GIF  ${(settings.scrim * 100).toInt()}%", color = Muted, fontSize = 12.sp)
-            Slider(
-                value = settings.scrim,
-                onValueChange = { onChange(settings.copy(scrim = it)) },
-                valueRange = 0f..0.8f,
-                modifier = Modifier.tvFocus(),
-                colors = sliderColors(),
-            )
+            Text("Dim GIF  ${(settings.scrim * 100).toInt()}%", color = SoftRed, fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StepButton("Dim −") {
+                    onChange(settings.copy(scrim = (settings.scrim - 0.1f).coerceIn(0f, 0.8f)))
+                }
+                StepButton("Dim +") {
+                    onChange(settings.copy(scrim = (settings.scrim + 0.1f).coerceIn(0f, 0.8f)))
+                }
+            }
         }
 
         Section("Folders")
-        Text("Add a folder to scan videos. Exclude a folder to leave it out.", color = Muted, fontSize = 12.sp)
+        Text("Add a folder to scan videos. Exclude a folder to leave it out.", color = SoftRed, fontSize = 12.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onAddFolder, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Add folder") }
             Button(onClick = onExcludeFolder, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Exclude folder") }
@@ -177,15 +187,13 @@ fun SettingsScreen(
         }
 
         Section("Rows")
-        Text("Create a row, rename it, then move it. Hold Select on a video to put it in a row.", color = Muted, fontSize = 12.sp)
+        Text("Create a row, rename it, then move it. Hold a thumbnail for favorite, move, rename, or delete.", color = SoftRed, fontSize = 12.sp)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
+            RedlineTextField(
                 value = rowDraft,
                 onValueChange = { rowDraft = it.take(32) },
-                singleLine = true,
-                label = { Text("New row") },
-                colors = fieldColors(),
-                modifier = Modifier.weight(1f).tvFocus(),
+                label = "New row",
+                modifier = Modifier.weight(1f),
             )
             Button(
                 onClick = {
@@ -198,12 +206,10 @@ fun SettingsScreen(
         }
         settings.rows.sortedBy { it.order }.forEach { row ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                OutlinedTextField(
+                RedlineTextField(
                     value = row.name,
                     onValueChange = { onRenameRow(row.id, it) },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f).tvFocus(),
-                    colors = fieldColors(),
+                    modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = { onMoveRow(row.id, -1) }, modifier = Modifier.tvFocus()) {
                     Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Move ${row.name} up", tint = Color.White)
@@ -261,7 +267,7 @@ fun SettingsScreen(
 
 @Composable
 private fun Section(title: String) {
-    Text(title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
+    Text(title, color = Red, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
 }
 
 @Composable
@@ -276,7 +282,7 @@ private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit)
 @Composable
 private fun <T> ChoiceLine(label: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
     Column {
-        Text(label, color = Muted, fontSize = 12.sp)
+        Text(label, color = SoftRed, fontSize = 12.sp)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             options.forEach { (value, name) ->
                 val on = value == selected
@@ -296,53 +302,129 @@ private fun <T> ChoiceLine(label: String, options: List<Pair<T, String>>, select
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ColorPicker(hex: String, onChange: (String) -> Unit) {
-    val start = remember { hexToHsv(hex) }
-    var hue by remember { mutableFloatStateOf(start[0]) }
-    var sat by remember { mutableFloatStateOf(start[1]) }
-    var value by remember { mutableFloatStateOf(start[2]) }
-    val color = Color.hsv(hue, sat, value)
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(
-            Modifier
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(color)
-                .border(2.dp, Color.White, CircleShape),
+    val swatches = listOf(
+        "#0F0F0F", "#000000", "#1C1C1C", "#FFFFFF",
+        "#FF1F1F", "#B71C1C", "#E53935", "#FF8A80",
+        "#1565C0", "#2E7D32", "#F9A825", "#6A1B9A",
+        "#00838F", "#4E342E", "#455A64", "#F5F5F5",
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(colorFromHex(hex))
+                    .border(2.dp, Color.White, CircleShape),
+            )
+            Text(hex.uppercase(), color = Color.White, fontSize = 13.sp)
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            swatches.forEach { swatch ->
+                val selected = swatch.equals(hex, ignoreCase = true)
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .tvFocus(CircleShape)
+                        .clip(CircleShape)
+                        .background(colorFromHex(swatch))
+                        .border(if (selected) 3.dp else 1.dp, if (selected) Red else Color.White, CircleShape)
+                        .clickable { onChange(swatch) },
+                )
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Stepper("Hue") { onChange(shiftColor(hex, hueDelta = -20f)) }
+            Stepper("Hue", plus = true) { onChange(shiftColor(hex, hueDelta = 20f)) }
+            Stepper("Color") { onChange(shiftColor(hex, satDelta = -0.15f)) }
+            Stepper("Color", plus = true) { onChange(shiftColor(hex, satDelta = 0.15f)) }
+            Stepper("Light") { onChange(shiftColor(hex, valueDelta = -0.1f)) }
+            Stepper("Light", plus = true) { onChange(shiftColor(hex, valueDelta = 0.1f)) }
+        }
+    }
+}
+
+@Composable
+private fun Stepper(label: String, plus: Boolean = false, onClick: () -> Unit) {
+    StepButton((if (plus) "$label +" else "$label −"), onClick)
+}
+
+private fun shiftColor(hex: String, hueDelta: Float = 0f, satDelta: Float = 0f, valueDelta: Float = 0f): String {
+    val hsv = hexToHsv(hex)
+    var saturation = (hsv[1] + satDelta).coerceIn(0f, 1f)
+    var brightness = (hsv[2] + valueDelta).coerceIn(0f, 1f)
+    val hue = (hsv[0] + hueDelta + 360f) % 360f
+    if (hueDelta != 0f && saturation < 0.35f) saturation = 0.85f
+    if (hueDelta != 0f && brightness < 0.2f) brightness = 0.55f
+    return hexFromColor(Color.hsv(hue, saturation, brightness))
+}
+
+@Composable
+private fun StepButton(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        color = Color.White,
+        fontSize = 13.sp,
+        modifier = Modifier
+            .tvFocus()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Surface2)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    )
+}
+
+@Composable
+fun RedlineTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+) {
+    var editing by remember { mutableStateOf(false) }
+    if (!editing) {
+        Column(
+            modifier
+                .tvFocus()
+                .clip(RoundedCornerShape(8.dp))
+                .background(Surface2)
+                .clickable { editing = true }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            if (label != null) Text(label, color = SoftRed, fontSize = 11.sp)
+            Text(value.ifBlank { " " }, color = Color.White, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    } else {
+        val keyboard = LocalSoftwareKeyboardController.current
+        val requester = remember { FocusRequester() }
+        var sawFocus by remember { mutableStateOf(false) }
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            label = label?.let { { Text(it) } },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+                editing = false
+                keyboard?.hide()
+            }),
+            colors = fieldColors(),
+            modifier = modifier
+                .focusRequester(requester)
+                .onFocusChanged {
+                    if (it.isFocused) sawFocus = true
+                    else if (sawFocus) editing = false
+                },
         )
-        Column(Modifier.weight(1f)) {
-            Text("Color", color = Muted, fontSize = 12.sp)
-            Slider(
-                value = hue,
-                onValueChange = {
-                    hue = it
-                    onChange(hexFromColor(Color.hsv(hue, sat, value)))
-                },
-                valueRange = 0f..360f,
-                colors = sliderColors(),
-                modifier = Modifier.tvFocus(),
-            )
-            Slider(
-                value = sat,
-                onValueChange = {
-                    sat = it
-                    onChange(hexFromColor(Color.hsv(hue, sat, value)))
-                },
-                valueRange = 0f..1f,
-                colors = sliderColors(),
-                modifier = Modifier.tvFocus(),
-            )
-            Slider(
-                value = value,
-                onValueChange = {
-                    value = it
-                    onChange(hexFromColor(Color.hsv(hue, sat, value)))
-                },
-                valueRange = 0f..1f,
-                colors = sliderColors(),
-                modifier = Modifier.tvFocus(),
-            )
+        LaunchedEffect(Unit) {
+            runCatching { requester.requestFocus() }
+            keyboard?.show()
+        }
+        DisposableEffect(Unit) {
+            onDispose { keyboard?.hide() }
         }
     }
 }
@@ -356,16 +438,9 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     cursorColor = Color.White,
     focusedBorderColor = Color.White,
     unfocusedBorderColor = Line,
-    focusedLabelColor = Color.White,
-    unfocusedLabelColor = Muted,
+    focusedLabelColor = SoftRed,
+    unfocusedLabelColor = SoftRed,
 )
 
 @Composable
 private fun darkButton() = ButtonDefaults.buttonColors(containerColor = Surface2, contentColor = Color.White)
-
-@Composable
-private fun sliderColors() = SliderDefaults.colors(
-    thumbColor = Color.White,
-    activeTrackColor = Color.White,
-    inactiveTrackColor = Color.White.copy(alpha = 0.3f),
-)

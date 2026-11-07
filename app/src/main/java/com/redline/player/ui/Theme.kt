@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import android.content.res.Configuration
 
 val Red = Color(0xFFFF1F1F)
+val SoftRed = Color(0xFFFF9A9A)
 val Black = Color(0xFF000000)
 val DefaultBg = Color(0xFF0F0F0F)
 val Surface = Color(0xFF141414)

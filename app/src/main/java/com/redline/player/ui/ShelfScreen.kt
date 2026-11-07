@@ -2,7 +2,7 @@ package com.redline.player.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,6 +63,7 @@ fun ShelfScreen(
     onAdd: () -> Unit,
     onOpen: (VideoItem, String) -> Unit,
     onFocus: (String) -> Unit,
+    onMenu: (VideoItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val visible = rows.sortedBy { it.order }.map { row -> row to videosFor(row, videos) }.filter { (row, items) ->
@@ -88,6 +89,7 @@ fun ShelfScreen(
                 firstFocus = if (row.id == firstRowId) firstFocus else null,
                 onOpen = { onOpen(it, row.id) },
                 onFocus = onFocus,
+                onMenu = onMenu,
             )
         }
     }
@@ -102,6 +104,7 @@ private fun VideoRow(
     firstFocus: FocusRequester?,
     onOpen: (VideoItem) -> Unit,
     onFocus: (String) -> Unit,
+    onMenu: (VideoItem) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -134,6 +137,7 @@ private fun VideoRow(
                         width = cardWidth,
                         focusRequester = if (index == 0) firstFocus else null,
                         onOpen = { onOpen(video) },
+                        onLongPress = { onMenu(video) },
                         onFocus = {
                             onFocus(video.uri)
                             scope.launch { listState.animateScrollToItem(index.coerceAtLeast(0)) }
@@ -151,6 +155,7 @@ private fun VideoCard(
     width: Dp,
     focusRequester: FocusRequester?,
     onOpen: () -> Unit,
+    onLongPress: () -> Unit,
     onFocus: () -> Unit,
 ) {
     var focused by remember(video.uri) { mutableStateOf(false) }
@@ -170,7 +175,7 @@ private fun VideoCard(
             }
             .border(3.dp, if (focused) Color.White else Color.Transparent, RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onOpen)
+            .combinedClickable(onClick = onOpen, onLongClick = onLongPress)
             .padding(3.dp),
     ) {
         Box(

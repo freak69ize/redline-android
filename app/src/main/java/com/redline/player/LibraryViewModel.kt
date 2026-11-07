@@ -99,8 +99,53 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         send(PlayerCommand.VolumeBy(delta))
     }
 
+    @Volatile
+    var playerChrome: Boolean = false
+
+    fun noteChrome(visible: Boolean) {
+        playerChrome = visible
+    }
+
+    fun revealPlayer() {
+        if (_state.value.screen == Screen.Player) send(PlayerCommand.Reveal)
+    }
+
     fun confirm() {
         if (_state.value.screen == Screen.Player) send(PlayerCommand.TogglePlay)
+    }
+
+    fun renameVideo(uri: String, name: String) {
+        val clean = name.trim().take(80)
+        if (clean.isEmpty()) return
+        viewModelScope.launch {
+            mutate { current ->
+                current.copy(
+                    videos = current.videos.map { video ->
+                        if (video.uri == uri) video.copy(title = clean) else video
+                    },
+                    menuUri = null,
+                )
+            }
+        }
+    }
+
+    fun moveVideoToRow(uri: String, rowId: String) {
+        viewModelScope.launch {
+            mutate { current ->
+                val row = current.settings.rows.firstOrNull { it.id == rowId } ?: return@mutate current
+                current.copy(
+                    videos = current.videos.map { video ->
+                        if (video.uri != uri) video
+                        else when (row.kind) {
+                            "favorites" -> video.copy(favorite = true, favoredAt = System.currentTimeMillis())
+                            "library" -> video.copy(rowIds = emptyList())
+                            else -> video.copy(rowIds = listOf(row.id))
+                        }
+                    },
+                    menuUri = null,
+                )
+            }
+        }
     }
 
     fun openMenu() {

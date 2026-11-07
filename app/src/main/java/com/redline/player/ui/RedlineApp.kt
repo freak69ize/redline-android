@@ -1,6 +1,7 @@
 package com.redline.player.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -10,13 +11,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -30,7 +32,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -129,23 +133,26 @@ fun RedlineApp(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                "Logo opens settings. Left and right move a row.",
+                                "Hold a video to favorite, move, rename, or delete.",
                                 color = Muted,
                                 fontSize = if (tv) 14.sp else 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        Button(
-                            onClick = onAddVideos,
-                            enabled = !state.busy,
-                            modifier = Modifier.tvFocus(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Red, contentColor = Black),
-                        ) {
-                            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (state.busy) "Adding…" else "Add videos", fontWeight = FontWeight.SemiBold)
-                        }
+                        Text(
+                            if (state.busy) "Adding…" else "Add videos",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .tvFocus(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(DefaultBg)
+                                .border(1.dp, Color.White, RoundedCornerShape(8.dp))
+                                .clickable(enabled = !state.busy, onClick = onAddVideos)
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
                     }
                     if (!state.ready) {
                         Text("Opening your shelf…", color = Muted, modifier = Modifier.padding(24.dp))
@@ -159,6 +166,10 @@ fun RedlineApp(
                             onAdd = onAddVideos,
                             onOpen = { video, rowId -> vm.play(video.uri, rowId) },
                             onFocus = vm::onFocus,
+                            onMenu = { video ->
+                                vm.onFocus(video.uri)
+                                vm.openMenu()
+                            },
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -216,40 +227,47 @@ fun RedlineApp(
                         showRemaining = state.settings.showRemaining,
                         subtitleScale = state.settings.subtitleScale,
                         sleepMinutes = state.settings.sleepMinutes,
+                        favorite = playing.favorite,
                         commands = vm.commands,
                         onEnded = vm::onVideoEnded,
                         onSleep = vm::closePlayer,
                         onProgress = { vm.savePosition(playing.uri, it) },
+                        onFavorite = { vm.toggleFavorite(playing.uri) },
+                        onChrome = vm::noteChrome,
                     )
                 }
             }
             val menuVideo = state.videos.firstOrNull { it.uri == state.menuUri }
             if (menuVideo != null) {
+                var renaming by remember(menuVideo.uri) { mutableStateOf(false) }
+                var draft by remember(menuVideo.uri) { mutableStateOf(menuVideo.title) }
+                val moveRows = state.settings.rows.filter { it.kind == "custom" || it.kind == "library" }.sortedBy { it.order }
                 Dialog(onDismissRequest = vm::closeMenu) {
                     Column(
                         Modifier
-                            .width(320.dp)
+                            .width(340.dp)
+                            .heightIn(max = 460.dp)
+                            .verticalScroll(rememberScrollState())
                             .background(Surface, RoundedCornerShape(12.dp))
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(menuVideo.title, color = Ink, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(menuVideo.title, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         DialogButton("Play") { vm.play(menuVideo.uri, state.playingRowId ?: "library") }
-                        DialogButton(if (menuVideo.favorite) "Remove favorite" else "Favorite") {
+                        DialogButton(if (menuVideo.favorite) "Remove from favorites" else "Add to favorites") {
                             vm.toggleFavorite(menuVideo.uri)
                         }
-                        val custom = state.settings.rows.filter { it.kind == "custom" }
-                        if (custom.isEmpty()) {
-                            Text("Create a row in Settings to file this video.", color = Muted, fontSize = 12.sp)
-                        } else {
-                            custom.forEach { row ->
-                                val inside = row.id in menuVideo.rowIds
-                                DialogButton(if (inside) "Remove from ${row.name}" else "Add to ${row.name}") {
-                                    vm.toggleVideoRow(menuVideo.uri, row.id)
-                                }
-                            }
+                        Text("Move to a row", color = SoftRed, fontSize = 12.sp)
+                        moveRows.forEach { row ->
+                            DialogButton("Move to ${row.name}") { vm.moveVideoToRow(menuVideo.uri, row.id) }
                         }
-                        DialogButton("Remove from shelf") { vm.askRemove(menuVideo.uri) }
+                        if (renaming) {
+                            RedlineTextField(value = draft, onValueChange = { draft = it.take(80) }, label = "Name")
+                            DialogButton("Save name") { vm.renameVideo(menuVideo.uri, draft) }
+                        } else {
+                            DialogButton("Rename video") { renaming = true }
+                        }
+                        DialogButton("Delete from player") { vm.askRemove(menuVideo.uri) }
                         DialogButton("Close") { vm.closeMenu() }
                     }
                 }
@@ -264,9 +282,9 @@ fun RedlineApp(
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("Remove ${confirmVideo.title} from the shelf?", color = Color.White, fontSize = 16.sp)
-                        Text("The file stays on the device.", color = Muted, fontSize = 13.sp)
-                        DialogButton("Remove") { vm.remove(confirmVideo.uri) }
+                        Text("Delete ${confirmVideo.title} from the player?", color = Color.White, fontSize = 16.sp)
+                        Text("The file stays on the device.", color = SoftRed, fontSize = 13.sp)
+                        DialogButton("Delete") { vm.remove(confirmVideo.uri) }
                         DialogButton("Cancel") { vm.handleBack() }
                     }
                 }

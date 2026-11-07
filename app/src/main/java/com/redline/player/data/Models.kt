@@ -83,6 +83,7 @@ sealed interface PlayerCommand {
     data class SeekBy(val ms: Long) : PlayerCommand
     data object TogglePlay : PlayerCommand
     data class VolumeBy(val delta: Float) : PlayerCommand
+    data object Reveal : PlayerCommand
 }
 
 fun videosFor(row: ShelfRow, videos: List<VideoItem>): List<VideoItem> {

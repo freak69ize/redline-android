@@ -102,23 +102,38 @@ class MainActivity : ComponentActivity() {
                     vm.seek(true)
                     return true
                 }
-                KeyEvent.KEYCODE_DPAD_UP -> {
+                KeyEvent.KEYCODE_VOLUME_UP -> {
                     vm.volume(0.1f)
                     return true
                 }
-                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                KeyEvent.KEYCODE_VOLUME_DOWN -> {
                     vm.volume(-0.1f)
                     return true
                 }
-                KeyEvent.KEYCODE_BUTTON_A,
-                KeyEvent.KEYCODE_DPAD_CENTER,
-                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_DPAD_UP,
+                KeyEvent.KEYCODE_DPAD_DOWN,
+                -> {
+                    if (!vm.playerChrome) {
+                        vm.revealPlayer()
+                        return true
+                    }
+                }
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
                 KeyEvent.KEYCODE_MEDIA_PLAY,
                 KeyEvent.KEYCODE_MEDIA_PAUSE,
                 -> {
                     vm.confirm()
                     return true
+                }
+                KeyEvent.KEYCODE_BUTTON_A,
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_ENTER,
+                -> {
+                    if (!vm.playerChrome) {
+                        vm.confirm()
+                        vm.revealPlayer()
+                        return true
+                    }
                 }
             }
         }
