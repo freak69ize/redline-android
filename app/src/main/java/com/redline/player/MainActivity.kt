@@ -1,8 +1,8 @@
 package com.redline.player
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
-import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,6 +13,8 @@ import com.redline.player.ui.RedlineApp
 
 class MainActivity : ComponentActivity() {
     private lateinit var vm: LibraryViewModel
+    private var folderExcluded = false
+    private var swallowCenterUp = false
 
     private val videoPicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         vm.addVideos(uris)
@@ -24,6 +26,17 @@ class MainActivity : ComponentActivity() {
 
     private val logoPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.setLogo(uri)
+    }
+
+    private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        try {
+            contentResolver.takePersistableUriPermission(uri, flags)
+        } catch (_: SecurityException) {
+            // The grant still lasts for this session.
+        }
+        if (folderExcluded) vm.excludeFolder(uri) else vm.includeFolder(uri)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,64 +56,91 @@ class MainActivity : ComponentActivity() {
                 onAddVideos = { videoPicker.launch(arrayOf("video/*")) },
                 onAddGif = { gifPicker.launch(arrayOf("image/gif")) },
                 onPickLogo = { logoPicker.launch(arrayOf("image/jpeg", "image/png")) },
+                onAddFolder = {
+                    folderExcluded = false
+                    folderPicker.launch(null)
+                },
+                onExcludeFolder = {
+                    folderExcluded = true
+                    folderPicker.launch(null)
+                },
             )
         }
     }
 
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER && ::vm.isInitialized && vm.state.value.screen == Screen.Shelf) {
+            event.startTracking()
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER && ::vm.isInitialized && vm.state.value.screen == Screen.Shelf) {
+            swallowCenterUp = true
+            vm.openMenu()
+            return true
+        }
+        return super.onKeyLongPress(keyCode, event)
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
         if (!::vm.isInitialized) return super.dispatchKeyEvent(event)
-        when (event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (event.repeatCount > 0 && vm.state.value.screen == Screen.Player) {
-                    vm.onLeft { }
+        if (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER && event.action == KeyEvent.ACTION_UP && swallowCenterUp) {
+            swallowCenterUp = false
+            return true
+        }
+        if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
+        val screen = vm.state.value.screen
+        if (screen == Screen.Player) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    vm.seek(false)
                     return true
                 }
-                if (event.repeatCount > 0) return true
-                val consumed = vm.onLeft { moveFocus(View.FOCUS_LEFT) }
-                return if (consumed) true else super.dispatchKeyEvent(event)
-            }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                vm.onRight { moveFocus(View.FOCUS_RIGHT) }
-                return true
-            }
-            KeyEvent.KEYCODE_DPAD_UP -> {
-                vm.onUp { moveFocus(View.FOCUS_UP) }
-                return true
-            }
-            KeyEvent.KEYCODE_DPAD_DOWN -> {
-                vm.onDown { moveFocus(View.FOCUS_DOWN) }
-                return true
-            }
-            KeyEvent.KEYCODE_BUTTON_A,
-            KeyEvent.KEYCODE_DPAD_CENTER,
-            KeyEvent.KEYCODE_ENTER,
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-            KeyEvent.KEYCODE_MEDIA_PLAY,
-            KeyEvent.KEYCODE_MEDIA_PAUSE,
-            -> {
-                if (vm.state.value.screen == Screen.Player) {
+                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    vm.seek(true)
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    vm.volume(0.1f)
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    vm.volume(-0.1f)
+                    return true
+                }
+                KeyEvent.KEYCODE_BUTTON_A,
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                KeyEvent.KEYCODE_MEDIA_PLAY,
+                KeyEvent.KEYCODE_MEDIA_PAUSE,
+                -> {
                     vm.confirm()
                     return true
                 }
             }
+        }
+        when (event.keyCode) {
             KeyEvent.KEYCODE_BUTTON_X -> {
                 vm.toggleFavoriteFocused()
                 return true
             }
             KeyEvent.KEYCODE_BUTTON_Y -> {
-                vm.removeFocused()
+                vm.askRemoveFocused()
                 return true
+            }
+            KeyEvent.KEYCODE_MENU -> {
+                if (screen == Screen.Shelf) {
+                    vm.openMenu()
+                    return true
+                }
             }
             KeyEvent.KEYCODE_BUTTON_B -> {
                 if (vm.handleBack()) return true
             }
         }
         return super.dispatchKeyEvent(event)
-    }
-
-    private fun moveFocus(direction: Int) {
-        val focused = window.decorView.findFocus() ?: return
-        focused.focusSearch(direction)?.requestFocus()
     }
 }

@@ -12,6 +12,8 @@ data class VideoItem(
     val favoredAt: Long,
     val positionMs: Long,
     val thumbPath: String,
+    val sourceTree: String? = null,
+    val rowIds: List<String> = emptyList(),
 )
 
 data class UserGif(
@@ -19,39 +21,60 @@ data class UserGif(
     val name: String,
 )
 
+data class FolderEntry(
+    val uri: String,
+    val name: String,
+    val excluded: Boolean,
+)
+
+data class ShelfRow(
+    val id: String,
+    val name: String,
+    val order: Int,
+    val kind: String,
+)
+
+fun defaultRows(): List<ShelfRow> = listOf(
+    ShelfRow("favorites", "Favorites", 0, "favorites"),
+    ShelfRow("continue", "Continue watching", 1, "continue"),
+    ShelfRow("library", "Library", 2, "library"),
+)
+
 data class Settings(
     val backdrop: String = "solid",
     val gifId: String? = null,
-    val scrim: Float = 0.5f,
-    val favoritesOnTop: Boolean = true,
+    val scrim: Float = 0.55f,
     val appTitle: String = "Redline",
     val logoUri: String? = null,
     val backgroundColor: String = "#0F0F0F",
+    val seekStepMs: Long = 10_000,
+    val resumePlayback: Boolean = true,
+    val playbackSpeed: Float = 1f,
+    val aspect: String = "fit",
+    val repeatMode: String = "off",
+    val autoplayNext: Boolean = true,
+    val showRemaining: Boolean = false,
+    val subtitleScale: Float = 1f,
+    val confirmRemove: Boolean = true,
+    val sleepMinutes: Int = 0,
+    val rows: List<ShelfRow> = defaultRows(),
 )
 
 fun Settings.shelfTitle(): String = appTitle.trim().ifBlank { "Redline" }
 
-fun Settings.usesGif(): Boolean = backdrop == "gif" && !gifId.isNullOrBlank()
-
-data class PresetGif(
-    val id: String,
-    val name: String,
-    val assetPath: String,
-)
-
-val PRESET_GIFS = listOf(
-    PresetGif("asset:embers", "Embers", "file:///android_asset/backdrops/embers.gif"),
-    PresetGif("asset:leak", "Light leak", "file:///android_asset/backdrops/leak.gif"),
-    PresetGif("asset:pulse", "Pulse", "file:///android_asset/backdrops/pulse.gif"),
-)
+fun Settings.usesGif(): Boolean = backdrop == "gif" && !gifId.isNullOrBlank() && !gifId.startsWith("asset:")
 
 data class UiState(
     val videos: List<VideoItem> = emptyList(),
     val gifs: List<UserGif> = emptyList(),
+    val folders: List<FolderEntry> = emptyList(),
     val settings: Settings = Settings(),
     val screen: Screen = Screen.Shelf,
     val playingUri: String? = null,
+    val playingRowId: String? = null,
     val focusedUri: String? = null,
+    val menuUri: String? = null,
+    val confirmUri: String? = null,
     val ready: Boolean = false,
     val busy: Boolean = false,
 )
@@ -60,6 +83,17 @@ sealed interface PlayerCommand {
     data class SeekBy(val ms: Long) : PlayerCommand
     data object TogglePlay : PlayerCommand
     data class VolumeBy(val delta: Float) : PlayerCommand
+}
+
+fun videosFor(row: ShelfRow, videos: List<VideoItem>): List<VideoItem> {
+    return when (row.kind) {
+        "favorites" -> videos.filter { it.favorite }.sortedByDescending { it.favoredAt }
+        "continue" -> videos.filter { item ->
+            item.positionMs > 3_000 && (item.durationMs == 0L || item.positionMs < item.durationMs - 4_000)
+        }
+        "library" -> videos
+        else -> videos.filter { row.id in it.rowIds }
+    }
 }
 
 fun formatDuration(ms: Long): String {
@@ -85,7 +119,6 @@ fun formatBytes(bytes: Long): String {
 }
 
 fun backdropModel(settings: Settings, gifs: List<UserGif>): Any? {
-    if (settings.backdrop != "gif" || settings.gifId == null) return null
-    PRESET_GIFS.firstOrNull { it.id == settings.gifId }?.let { return it.assetPath }
+    if (!settings.usesGif()) return null
     return gifs.firstOrNull { it.uri == settings.gifId }?.uri
 }

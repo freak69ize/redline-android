@@ -3,6 +3,7 @@ package com.redline.player.ui
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -50,15 +51,43 @@ fun colorFromHex(raw: String): Color {
     return Color(0xFF000000 or hex.toLong(16))
 }
 
+fun hexFromColor(color: Color): String {
+    val r = (color.red * 255f).toInt().coerceIn(0, 255)
+    val g = (color.green * 255f).toInt().coerceIn(0, 255)
+    val b = (color.blue * 255f).toInt().coerceIn(0, 255)
+    return "#%02X%02X%02X".format(r, g, b)
+}
+
+fun hexToHsv(raw: String): FloatArray {
+    val color = colorFromHex(raw)
+    val r = color.red
+    val g = color.green
+    val b = color.blue
+    val max = maxOf(r, g, b)
+    val min = minOf(r, g, b)
+    val delta = max - min
+    val hue = when {
+        delta == 0f -> 0f
+        max == r -> 60f * (((g - b) / delta) % 6f)
+        max == g -> 60f * (((b - r) / delta) + 2f)
+        else -> 60f * (((r - g) / delta) + 4f)
+    }.let { if (it < 0f) it + 360f else it }
+    val sat = if (max == 0f) 0f else delta / max
+    return floatArrayOf(hue, sat, max)
+}
+
 @Composable
 fun RedlineTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = Colors, content = content)
 }
 
 @Composable
-fun Modifier.redFocus(): Modifier {
+fun Modifier.tvFocus(shape: Shape = RoundedCornerShape(10.dp)): Modifier {
     var focused by remember { mutableStateOf(false) }
     return this
         .onFocusChanged { focused = it.isFocused }
-        .border(3.dp, if (focused) Red else Color.Transparent, RoundedCornerShape(12.dp))
+        .border(3.dp, if (focused) Color.White else Color.Transparent, shape)
 }
+
+@Composable
+fun Modifier.redFocus(): Modifier = tvFocus()

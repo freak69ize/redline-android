@@ -5,19 +5,19 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
@@ -29,11 +29,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusGroup
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -44,99 +46,100 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.redline.player.data.ShelfRow
 import com.redline.player.data.VideoItem
 import com.redline.player.data.formatBytes
 import com.redline.player.data.formatDuration
+import com.redline.player.data.videosFor
 import java.io.File
+import kotlinx.coroutines.launch
 
 @Composable
 fun ShelfScreen(
     videos: List<VideoItem>,
-    favoritesOnTop: Boolean,
+    rows: List<ShelfRow>,
     busy: Boolean,
     isTv: Boolean,
     firstFocus: FocusRequester,
     onAdd: () -> Unit,
-    onOpen: (VideoItem) -> Unit,
+    onOpen: (VideoItem, String) -> Unit,
     onFocus: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val favorites = videos.filter { it.favorite }.sortedByDescending { it.favoredAt }
-    val resume = videos.filter { it.positionMs > 3_000 && (it.durationMs == 0L || it.positionMs < it.durationMs - 4_000) }
-        .sortedByDescending { it.positionMs }
-    val focusKey = when {
-        favoritesOnTop && favorites.isNotEmpty() -> "fav-${favorites.first().uri}"
-        resume.isNotEmpty() -> "resume-${resume.first().uri}"
-        videos.isNotEmpty() -> "lib-${videos.first().uri}"
-        else -> null
+    val visible = rows.sortedBy { it.order }.map { row -> row to videosFor(row, videos) }.filter { (row, items) ->
+        items.isNotEmpty() || row.kind == "custom" || row.kind == "library"
     }
-    val side = if (isTv) 48.dp else 20.dp
-    val favWidth = if (isTv) 280.dp else 248.dp
-    val cardWidth = if (isTv) 232.dp else 196.dp
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(start = side, end = side, bottom = if (isTv) 48.dp else 150.dp),
+    val firstRowId = visible.firstOrNull { it.second.isNotEmpty() }?.first?.id
+    val side = if (isTv) 48.dp else 16.dp
+    if (!busy && videos.isEmpty() && visible.none { it.second.isNotEmpty() }) {
+        EmptyShelf(onAdd, modifier.padding(horizontal = side))
+        return
+    }
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(bottom = if (isTv) 48.dp else 120.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        if (!busy && videos.isEmpty()) {
-            EmptyShelf(onAdd)
-        } else {
-            if (favoritesOnTop && favorites.isNotEmpty()) {
-                SectionTitle("Favorites", "Larger thumbnails")
-                CardRows(favorites, cardWidth = favWidth, onOpen = onOpen, onFocus = onFocus, keyPrefix = "fav", focusKey = focusKey, firstFocus = firstFocus)
-                Spacer(Modifier.height(22.dp))
-            }
-            if (resume.isNotEmpty()) {
-                SectionTitle("Continue watching", null)
-                CardRows(resume, cardWidth = cardWidth, onOpen = onOpen, onFocus = onFocus, keyPrefix = "resume", focusKey = focusKey, firstFocus = firstFocus)
-                Spacer(Modifier.height(22.dp))
-            }
-            SectionTitle("Library", videos.size.toString())
-            CardRows(videos, cardWidth = cardWidth, onOpen = onOpen, onFocus = onFocus, keyPrefix = "lib", focusKey = focusKey, firstFocus = firstFocus)
+        items(visible, key = { it.first.id }) { (row, items) ->
+            VideoRow(
+                title = row.name,
+                videos = items,
+                cardWidth = if (row.kind == "favorites") if (isTv) 280.dp else 220.dp else if (isTv) 220.dp else 180.dp,
+                side = side,
+                firstFocus = if (row.id == firstRowId) firstFocus else null,
+                onOpen = { onOpen(it, row.id) },
+                onFocus = onFocus,
+            )
         }
     }
 }
 
 @Composable
-private fun SectionTitle(title: String, meta: String?) {
-    Row(
-        Modifier.fillMaxWidth().padding(bottom = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        Text(title, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-        if (meta != null) Text(meta, color = Muted, fontSize = 12.sp)
-    }
-}
-
-@Composable
-private fun CardRows(
+private fun VideoRow(
+    title: String,
     videos: List<VideoItem>,
     cardWidth: Dp,
+    side: Dp,
+    firstFocus: FocusRequester?,
     onOpen: (VideoItem) -> Unit,
     onFocus: (String) -> Unit,
-    keyPrefix: String,
-    focusKey: String?,
-    firstFocus: FocusRequester,
 ) {
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val gap = 12.dp
-        val cols = ((maxWidth + gap) / (cardWidth + gap)).toInt().coerceAtLeast(1)
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            videos.chunked(cols).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    row.forEach { video ->
-                        val cardKey = "$keyPrefix-${video.uri}"
-                        VideoCard(
-                            video = video,
-                            width = cardWidth,
-                            onOpen = { onOpen(video) },
-                            onFocus = { onFocus(video.uri) },
-                            modifier = Modifier,
-                            key = cardKey,
-                            focusRequester = if (cardKey == focusKey) firstFocus else null,
-                        )
-                    }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            title,
+            color = Ink,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = side, end = side, bottom = 8.dp),
+        )
+        if (videos.isEmpty()) {
+            Text(
+                "Empty. Hold Select on a video and add it here.",
+                color = Muted,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(start = side, bottom = 4.dp),
+            )
+        } else {
+            LazyRow(
+                state = listState,
+                modifier = Modifier.fillMaxWidth().focusGroup(),
+                contentPadding = PaddingValues(horizontal = side),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(videos, key = { it.uri }) { video ->
+                    val index = videos.indexOf(video)
+                    VideoCard(
+                        video = video,
+                        width = cardWidth,
+                        focusRequester = if (index == 0) firstFocus else null,
+                        onOpen = { onOpen(video) },
+                        onFocus = {
+                            onFocus(video.uri)
+                            scope.launch { listState.animateScrollToItem(index.coerceAtLeast(0)) }
+                        },
+                    )
                 }
             }
         }
@@ -147,42 +150,41 @@ private fun CardRows(
 private fun VideoCard(
     video: VideoItem,
     width: Dp,
+    focusRequester: FocusRequester?,
     onOpen: () -> Unit,
     onFocus: () -> Unit,
-    modifier: Modifier,
-    key: String,
-    focusRequester: FocusRequester?,
 ) {
-    var focused by remember(key) { mutableStateOf(false) }
+    var focused by remember(video.uri) { mutableStateOf(false) }
     val progress = if (video.durationMs > 0 && video.positionMs > 0) {
         (video.positionMs.toFloat() / video.durationMs.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
     Column(
-        modifier
+        Modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .width(width)
             .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) onFocus()
+                val now = it.isFocused
+                if (now && !focused) onFocus()
+                focused = now
             }
-            .border(3.dp, if (focused) Red else Color.Transparent, RoundedCornerShape(14.dp))
-            .clip(RoundedCornerShape(14.dp))
+            .border(3.dp, if (focused) Color.White else Color.Transparent, RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onOpen)
-            .padding(4.dp),
+            .padding(3.dp),
     ) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(8.dp))
                 .background(Surface),
         ) {
             if (video.thumbPath.isNotBlank()) {
                 AsyncImage(
                     model = File(video.thumbPath),
-                    contentDescription = null,
+                    contentDescription = video.title,
                     modifier = Modifier.matchParentSize(),
                     contentScale = ContentScale.Crop,
                 )
@@ -191,25 +193,25 @@ private fun VideoCard(
                     Icons.Filled.PlayArrow,
                     contentDescription = null,
                     tint = Muted,
-                    modifier = Modifier.align(Alignment.Center).size(32.dp),
+                    modifier = Modifier.align(Alignment.Center).size(28.dp),
                 )
             }
             if (video.favorite) {
                 Icon(
                     Icons.Filled.Favorite,
                     contentDescription = null,
-                    tint = Red,
-                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp).size(16.dp),
+                    tint = Color.White,
+                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp).size(14.dp),
                 )
             }
             Text(
                 formatDuration(video.durationMs),
-                color = Ink,
+                color = Color.White,
                 fontSize = 11.sp,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(6.dp)
-                    .background(Black.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.72f), RoundedCornerShape(4.dp))
                     .padding(horizontal = 5.dp, vertical = 2.dp),
             )
             if (progress > 0f) {
@@ -218,7 +220,7 @@ private fun VideoCard(
                         .align(Alignment.BottomStart)
                         .fillMaxWidth(progress)
                         .height(3.dp)
-                        .background(Red),
+                        .background(Color.White),
                 )
             }
         }
@@ -229,41 +231,31 @@ private fun VideoCard(
             fontWeight = FontWeight.Medium,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp),
+            modifier = Modifier.padding(top = 6.dp, start = 2.dp, end = 2.dp),
         )
-        Text(formatBytes(video.sizeBytes), color = Muted, fontSize = 12.sp)
+        Text(
+            formatBytes(video.sizeBytes),
+            color = Muted,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(start = 2.dp),
+        )
     }
 }
 
 @Composable
-private fun EmptyShelf(onAdd: () -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().padding(top = 28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Surface),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Red, modifier = Modifier.size(56.dp))
-        }
+private fun EmptyShelf(onAdd: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth().padding(top = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             "YOUR SHELF IS EMPTY",
             color = Ink,
-            fontSize = 28.sp,
+            fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 2.sp,
-            modifier = Modifier.padding(top = 18.dp),
         )
         Text(
-            "Only plays videos already on this device. Nothing is uploaded.",
+            "Add videos or a folder. Nothing is uploaded.",
             color = Muted,
             fontSize = 14.sp,
-            modifier = Modifier.padding(top = 8.dp, start = 12.dp, end = 12.dp),
+            modifier = Modifier.padding(top = 8.dp),
         )
         Button(
             onClick = onAdd,

@@ -4,10 +4,7 @@
     android:id="@+id/player_view"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0F0F0F"
-    app:played_color="#FF1F1F"
-    app:scrubber_color="#FF1F1F"
-    app:unplayed_color="#40FFFFFF"
-    app:buffered_color="#66FFFFFF"
+    android:background="@android:color/black"
     app:show_buffering="when_playing"
-    app:use_controller="true" />
+    app:use_controller="false"
+    app:surface_type="surface_view" />

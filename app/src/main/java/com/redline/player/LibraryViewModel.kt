@@ -3,18 +3,18 @@ package com.redline.player
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
-import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.redline.player.data.FolderEntry
 import com.redline.player.data.LibraryStore
 import com.redline.player.data.PlayerCommand
 import com.redline.player.data.Screen
 import com.redline.player.data.Settings
+import com.redline.player.data.ShelfRow
 import com.redline.player.data.UiState
 import com.redline.player.data.UserGif
 import com.redline.player.data.VideoItem
+import com.redline.player.data.videosFor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,9 +29,6 @@ import java.io.File
 class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private val store = LibraryStore(app)
     private val mutex = Mutex()
-    private val handler = Handler(Looper.getMainLooper())
-    private var pendingLeft: Runnable? = null
-    private var armedAt = 0L
 
     private val _state = MutableStateFlow(UiState())
     val state = _state.asStateFlow()
@@ -50,97 +47,95 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(focusedUri = uri)
     }
 
-    fun play(uri: String) {
-        _state.value = _state.value.copy(screen = Screen.Player, playingUri = uri, focusedUri = uri)
+    fun openSettings() {
+        if (_state.value.screen == Screen.Player) return
+        _state.value = _state.value.copy(screen = Screen.Settings, menuUri = null, confirmUri = null)
+    }
+
+    fun play(uri: String, rowId: String) {
+        _state.value = _state.value.copy(
+            screen = Screen.Player,
+            playingUri = uri,
+            playingRowId = rowId,
+            focusedUri = uri,
+            menuUri = null,
+            confirmUri = null,
+        )
     }
 
     fun closePlayer() {
-        val playing = _state.value.playingUri
         _state.value = _state.value.copy(screen = Screen.Shelf, playingUri = null)
-        if (playing != null) {
-            // Position is flushed by the player before this returns.
-        }
-    }
-
-    fun toggleSettings() {
-        _state.updateScreen { current ->
-            when (current) {
-                Screen.Player -> current
-                Screen.Settings -> Screen.Shelf
-                Screen.Shelf -> Screen.Settings
-            }
-        }
     }
 
     fun handleBack(): Boolean {
-        val screen = _state.value.screen
-        if (screen == Screen.Player) {
+        val current = _state.value
+        if (current.confirmUri != null) {
+            _state.value = current.copy(confirmUri = null)
+            return true
+        }
+        if (current.menuUri != null) {
+            _state.value = current.copy(menuUri = null)
+            return true
+        }
+        if (current.screen == Screen.Player) {
             closePlayer()
             return true
         }
-        if (screen == Screen.Settings) {
-            _state.value = _state.value.copy(screen = Screen.Shelf)
+        if (current.screen == Screen.Settings) {
+            _state.value = current.copy(screen = Screen.Shelf)
             return true
         }
         return false
     }
 
-    /**
-     * D-pad Left.
-     * Shelf: the first tap waits 280ms so a second tap opens settings without moving focus.
-     * Settings: the first tap is not consumed (sliders and focus still see it). A second tap closes.
-     * Player: seek backward.
-     *
-     * @return true when this press was fully consumed.
-     */
-    fun onLeft(onSingle: () -> Unit): Boolean {
-        val screen = _state.value.screen
-        if (screen == Screen.Player) {
-            send(PlayerCommand.SeekBy(-10_000))
-            return true
-        }
-        val now = SystemClock.uptimeMillis()
-        if (armedAt != 0L && now - armedAt <= DOUBLE_MS) {
-            pendingLeft?.let { handler.removeCallbacks(it) }
-            pendingLeft = null
-            armedAt = 0L
-            toggleSettings()
-            return true
-        }
-        armedAt = now
-        if (screen == Screen.Shelf) {
-            val job = Runnable {
-                pendingLeft = null
-                onSingle()
-            }
-            pendingLeft = job
-            handler.postDelayed(job, DOUBLE_MS)
-            return true
-        }
-        return false
+    fun seek(forward: Boolean) {
+        if (_state.value.screen != Screen.Player) return
+        val step = _state.value.settings.seekStepMs
+        send(PlayerCommand.SeekBy(if (forward) step else -step))
     }
 
-    fun onRight(onSingle: () -> Unit) {
-        if (_state.value.screen == Screen.Player) send(PlayerCommand.SeekBy(10_000)) else onSingle()
-    }
-
-    fun onUp(onSingle: () -> Unit) {
-        if (_state.value.screen == Screen.Player) send(PlayerCommand.VolumeBy(0.1f)) else onSingle()
-    }
-
-    fun onDown(onSingle: () -> Unit) {
-        if (_state.value.screen == Screen.Player) send(PlayerCommand.VolumeBy(-0.1f)) else onSingle()
+    fun volume(delta: Float) {
+        if (_state.value.screen != Screen.Player) return
+        send(PlayerCommand.VolumeBy(delta))
     }
 
     fun confirm() {
         if (_state.value.screen == Screen.Player) send(PlayerCommand.TogglePlay)
     }
 
+    fun openMenu() {
+        if (_state.value.screen != Screen.Shelf) return
+        val uri = _state.value.focusedUri ?: return
+        _state.value = _state.value.copy(menuUri = uri, confirmUri = null)
+    }
+
+    fun closeMenu() {
+        _state.value = _state.value.copy(menuUri = null)
+    }
+
+    fun onVideoEnded() {
+        val current = _state.value
+        if (current.settings.repeatMode == "one") return
+        val row = current.settings.rows.firstOrNull { it.id == current.playingRowId }
+            ?: current.settings.rows.firstOrNull { it.kind == "library" }
+            ?: return
+        val list = videosFor(row, current.videos)
+        val index = list.indexOfFirst { it.uri == current.playingUri }
+        if (index < 0) return
+        val next = when {
+            index < list.lastIndex -> list[index + 1]
+            current.settings.repeatMode == "all" && list.isNotEmpty() -> list.first()
+            else -> null
+        } ?: return
+        if (current.settings.autoplayNext || current.settings.repeatMode == "all") {
+            play(next.uri, row.id)
+        }
+    }
+
     fun toggleFavoriteFocused() {
         val uri = when (_state.value.screen) {
             Screen.Player -> _state.value.playingUri
-            Screen.Shelf -> _state.value.focusedUri
-            Screen.Settings -> null
+            else -> _state.value.menuUri ?: _state.value.focusedUri
         } ?: return
         toggleFavorite(uri)
     }
@@ -161,14 +156,17 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun removeFocused() {
-        if (_state.value.screen == Screen.Settings) return
-        val uri = if (_state.value.screen == Screen.Player) {
-            _state.value.playingUri
+    fun askRemoveFocused() {
+        val uri = _state.value.menuUri ?: _state.value.focusedUri ?: return
+        askRemove(uri)
+    }
+
+    fun askRemove(uri: String) {
+        if (_state.value.settings.confirmRemove) {
+            _state.value = _state.value.copy(confirmUri = uri, menuUri = null)
         } else {
-            _state.value.focusedUri
-        } ?: return
-        remove(uri)
+            remove(uri)
+        }
     }
 
     fun remove(uri: String) {
@@ -184,6 +182,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                     videos = current.videos.filterNot { it.uri == uri },
                     playingUri = if (current.playingUri == uri) null else current.playingUri,
                     screen = nextScreen,
+                    menuUri = null,
+                    confirmUri = null,
+                    focusedUri = if (current.focusedUri == uri) null else current.focusedUri,
                 )
             }
         }
@@ -251,17 +252,128 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun addGif(uri: Uri) {
+    fun includeFolder(uri: Uri) {
         viewModelScope.launch {
-            val mime = getApplication<Application>().contentResolver.getType(uri).orEmpty()
-            val name = withContext(Dispatchers.IO) { store.readDisplayName(uri) }
-            if (mime != "image/gif" && !name.endsWith(".gif", ignoreCase = true)) return@launch
-            takeGrant(uri)
-            val gif = UserGif(uri.toString(), name.substringBeforeLast('.'))
+            _state.value = _state.value.copy(busy = true)
+            try {
+                val name = withContext(Dispatchers.IO) { store.treeName(uri) }
+                val excluded = _state.value.folders.filter { it.excluded }.map { it.uri }
+                val found = withContext(Dispatchers.IO) { store.findVideos(uri, excluded) }
+                val existing = _state.value.videos.map { it.uri }.toMutableSet()
+                val added = mutableListOf<VideoItem>()
+                for (hit in found) {
+                    if (!existing.add(hit.uri.toString())) continue
+                    takeGrant(hit.uri)
+                    added += withContext(Dispatchers.IO) { store.makeItem(hit, uri.toString()) }
+                }
+                mutate { current ->
+                    val folders = listOf(FolderEntry(uri.toString(), name, false)) +
+                        current.folders.filterNot { it.uri == uri.toString() }
+                    current.copy(
+                        videos = (added + current.videos).distinctBy { it.uri },
+                        folders = folders,
+                        focusedUri = added.firstOrNull()?.uri ?: current.focusedUri,
+                    )
+                }
+            } finally {
+                _state.value = _state.value.copy(busy = false)
+            }
+        }
+    }
+
+    fun excludeFolder(uri: Uri) {
+        viewModelScope.launch {
+            val name = withContext(Dispatchers.IO) { store.treeName(uri) }
+            val prefix = withContext(Dispatchers.IO) { store.decodeId(uri) }
+            mutate { current ->
+                val videos = current.videos.filterNot { video ->
+                    val id = store.decodeId(Uri.parse(video.uri))
+                    video.sourceTree == uri.toString() || (prefix.isNotEmpty() && id.startsWith(prefix))
+                }
+                val folders = listOf(FolderEntry(uri.toString(), name, true)) +
+                    current.folders.filterNot { it.uri == uri.toString() }
+                current.copy(videos = videos, folders = folders)
+            }
+        }
+    }
+
+    fun removeFolder(uri: String) {
+        viewModelScope.launch {
+            releaseGrant(uri)
+            mutate { current -> current.copy(folders = current.folders.filterNot { it.uri == uri }) }
+        }
+    }
+
+    fun addRow(name: String) {
+        val clean = name.trim().take(32)
+        if (clean.isEmpty()) return
+        viewModelScope.launch {
+            mutate { current ->
+                val order = (current.settings.rows.maxOfOrNull { it.order } ?: 0) + 1
+                val row = ShelfRow("row-$order-${clean.hashCode().toUInt().toString(16)}", clean, order, "custom")
+                current.copy(settings = current.settings.copy(rows = current.settings.rows + row))
+            }
+        }
+    }
+
+    fun renameRow(id: String, name: String) {
+        val clean = name.take(32)
+        viewModelScope.launch {
             mutate { current ->
                 current.copy(
-                    gifs = listOf(gif) + current.gifs.filterNot { it.uri == gif.uri },
-                    settings = current.settings.copy(backdrop = "gif", gifId = gif.uri),
+                    settings = current.settings.copy(
+                        rows = current.settings.rows.map { row ->
+                            if (row.id == id) row.copy(name = clean.ifBlank { row.name }) else row
+                        },
+                    ),
+                )
+            }
+        }
+    }
+
+    fun moveRow(id: String, direction: Int) {
+        viewModelScope.launch {
+            mutate { current ->
+                val sorted = current.settings.rows.sortedBy { it.order }.toMutableList()
+                val index = sorted.indexOfFirst { it.id == id }
+                val target = index + direction
+                if (index < 0 || target !in sorted.indices) return@mutate current
+                val moving = sorted[index]
+                sorted[index] = sorted[target]
+                sorted[target] = moving
+                current.copy(
+                    settings = current.settings.copy(
+                        rows = sorted.mapIndexed { order, row -> row.copy(order = order) },
+                    ),
+                )
+            }
+        }
+    }
+
+    fun deleteRow(id: String) {
+        viewModelScope.launch {
+            mutate { current ->
+                val row = current.settings.rows.firstOrNull { it.id == id } ?: return@mutate current
+                if (row.kind != "custom") return@mutate current
+                current.copy(
+                    settings = current.settings.copy(rows = current.settings.rows.filterNot { it.id == id }),
+                    videos = current.videos.map { video ->
+                        if (id !in video.rowIds) video else video.copy(rowIds = video.rowIds.filterNot { it == id })
+                    },
+                )
+            }
+        }
+    }
+
+    fun toggleVideoRow(uri: String, rowId: String) {
+        viewModelScope.launch {
+            mutate { current ->
+                current.copy(
+                    videos = current.videos.map { video ->
+                        if (video.uri != uri) video
+                        else if (rowId in video.rowIds) video.copy(rowIds = video.rowIds.filterNot { it == rowId })
+                        else video.copy(rowIds = video.rowIds + rowId)
+                    },
                 )
             }
         }
@@ -289,17 +401,36 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun addGif(uri: Uri) {
+        viewModelScope.launch {
+            val mime = getApplication<Application>().contentResolver.getType(uri).orEmpty()
+            val name = withContext(Dispatchers.IO) { store.readDisplayName(uri) }
+            if (mime != "image/gif" && !name.endsWith(".gif", ignoreCase = true)) return@launch
+            val previous = _state.value.gifs.firstOrNull()?.uri
+            takeGrant(uri)
+            if (previous != null && previous != uri.toString()) releaseGrant(previous)
+            val gif = UserGif(uri.toString(), name.substringBeforeLast('.'))
+            mutate { current ->
+                current.copy(
+                    gifs = listOf(gif),
+                    settings = current.settings.copy(backdrop = "gif", gifId = gif.uri),
+                )
+            }
+        }
+    }
+
     fun removeGif(uri: String) {
         viewModelScope.launch {
             releaseGrant(uri)
             mutate { current ->
-                val gifs = current.gifs.filterNot { it.uri == uri }
-                val settings = if (current.settings.gifId == uri) {
-                    current.settings.copy(gifId = "asset:embers", backdrop = "gif")
-                } else {
-                    current.settings
-                }
-                current.copy(gifs = gifs, settings = settings)
+                current.copy(
+                    gifs = current.gifs.filterNot { it.uri == uri },
+                    settings = if (current.settings.gifId == uri) {
+                        current.settings.copy(gifId = null, backdrop = "solid")
+                    } else {
+                        current.settings
+                    },
+                )
             }
         }
     }
@@ -350,16 +481,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         return ext == "jpg" || ext == "jpeg" || ext == "png"
     }
 
-    override fun onCleared() {
-        pendingLeft?.let { handler.removeCallbacks(it) }
-    }
-
-    private inline fun MutableStateFlow<UiState>.updateScreen(crossinline map: (Screen) -> Screen) {
-        value = value.copy(screen = map(value.screen))
-    }
-
     companion object {
-        private const val DOUBLE_MS = 280L
         private val VIDEO_EXT = setOf("mp4", "m4v", "webm", "mov", "mkv", "avi", "3gp", "ts", "m2ts", "ogv")
     }
 }

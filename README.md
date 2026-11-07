@@ -120,13 +120,13 @@ Add these only if you replace the picker with a full MediaStore scan:
 
 | Input | Action |
 | --- | --- |
-| D-pad / arrows | Move. Focus ring is red. |
-| Left, twice within 280ms | Open or close settings. On the shelf the first tap does not move focus. |
-| Left / Right while playing | Seek 10 seconds |
-| Up / Down while playing | Volume |
-| A, Enter, D-pad center | Play or pause while a video is open. On the shelf it activates the focused card. |
-| X | Favorite the focused or playing video |
-| Y | Remove it from the shelf (not from the device) |
-| B or Back | Close the player, then settings |
+| D-pad left / right | Move along the current row. In the player, seek. |
+| D-pad up / down | Move between rows. In the player, volume. |
+| Select the round logo | Open settings. Back closes it. |
+| Select on a video | Play it full screen. |
+| Hold Select | Favorite, add it to a row, or remove it. |
+| Play/Pause | Play or pause while a video is open. |
 
-Bundled GIF backgrounds live in `app/src/main/assets/backdrops/`. The user can also pick a GIF on device.
+The focus ring is white. There are no built-in GIF backgrounds. Add your own from Settings.
+
+Playback settings cover seek step, speed, picture size, repeat, subtitles, sleep timer, resume, and autoplay. Add or exclude folders from Settings as well.

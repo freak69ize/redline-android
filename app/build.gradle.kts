@@ -12,8 +12,8 @@ android {
         applicationId = "com.redline.player"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
     }
 
     buildTypes {
@@ -51,6 +51,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
     // Local playback only. No streaming extension, no okhttp, no INTERNET.
     implementation("androidx.media3:media3-exoplayer:1.4.1")
