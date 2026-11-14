@@ -226,6 +226,9 @@ fun PlayerScreen(
             },
         )
         if (showControls && !pip) {
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .background(Color.Black.copy(alpha = 0.45f))
                     .padding(horizontal = 24.dp, vertical = 16.dp),
