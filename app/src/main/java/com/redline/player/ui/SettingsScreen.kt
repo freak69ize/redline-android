@@ -131,7 +131,8 @@ fun SettingsScreen(
                 }
                 val moved = focusManager.moveFocus(direction)
                 if (!moved) {
-                    scope.launch { scroll.scrollBy(if (direction == FocusDirection.Down) 220f else -220f) }
+                    val delta = if (direction == FocusDirection.Down) 220 else -220
+                    scope.launch { scroll.scrollTo((scroll.value + delta).coerceIn(0, scroll.maxValue)) }
                 }
                 true
             }
