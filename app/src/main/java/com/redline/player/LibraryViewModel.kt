@@ -481,6 +481,28 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun setSplash(uri: Uri) {
+        viewModelScope.launch {
+            val mime = getApplication<Application>().contentResolver.getType(uri).orEmpty()
+            val name = withContext(Dispatchers.IO) { store.readDisplayName(uri) }
+            if (!isSplash(mime, name)) return@launch
+            val previous = _state.value.settings.splashUri
+            takeGrant(uri)
+            if (previous != null && previous != uri.toString()) releaseGrant(previous)
+            mutate { current ->
+                current.copy(settings = current.settings.copy(splashUri = uri.toString()))
+            }
+        }
+    }
+
+    fun clearSplash() {
+        viewModelScope.launch {
+            val previous = _state.value.settings.splashUri ?: return@launch
+            releaseGrant(previous)
+            mutate { current -> current.copy(settings = current.settings.copy(splashUri = null)) }
+        }
+    }
+
     fun addGif(uri: Uri) {
         viewModelScope.launch {
             val mime = getApplication<Application>().contentResolver.getType(uri).orEmpty()
@@ -559,6 +581,12 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         if (mime == "image/jpeg" || mime == "image/png" || mime == "image/jpg") return true
         val ext = name.substringAfterLast('.', "").lowercase()
         return ext == "jpg" || ext == "jpeg" || ext == "png"
+    }
+
+    private fun isSplash(mime: String, name: String): Boolean {
+        if (mime.startsWith("video/") || mime == "image/gif" || isLogo(mime, name)) return true
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return ext in setOf("gif", "jpg", "jpeg", "png", "webp", "mp4", "mkv", "webm", "mov", "m4v", "avi", "3gp")
     }
 
     companion object {

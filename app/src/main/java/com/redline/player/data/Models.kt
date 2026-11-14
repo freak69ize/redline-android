@@ -46,6 +46,7 @@ data class Settings(
     val scrim: Float = 0.55f,
     val appTitle: String = "Redline",
     val logoUri: String? = null,
+    val splashUri: String? = null,
     val backgroundColor: String = "#0F0F0F",
     val selectorColor: String = "#FFFFFF",
     val panelOpacity: Float = 0.7f,

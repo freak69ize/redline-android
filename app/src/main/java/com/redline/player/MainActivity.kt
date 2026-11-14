@@ -34,6 +34,10 @@ class MainActivity : ComponentActivity() {
         if (uri != null) vm.setLogo(uri)
     }
 
+    private val splashPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.setSplash(uri)
+    }
+
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@registerForActivityResult
         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -62,6 +66,9 @@ class MainActivity : ComponentActivity() {
                 onAddVideos = { videoPicker.launch(arrayOf("video/*")) },
                 onAddGif = { gifPicker.launch(arrayOf("image/gif")) },
                 onPickLogo = { logoPicker.launch(arrayOf("image/jpeg", "image/png")) },
+                onPickSplash = {
+                    splashPicker.launch(arrayOf("image/png", "image/jpeg", "image/gif", "video/*"))
+                },
                 onAddFolder = {
                     folderExcluded = false
                     folderPicker.launch(null)

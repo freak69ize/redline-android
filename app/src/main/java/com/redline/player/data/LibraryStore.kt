@@ -39,6 +39,7 @@ class LibraryStore(private val context: Context) {
                     scrim = settingsJson.optDouble("scrim", 0.55).toFloat().coerceIn(0f, 0.8f),
                     appTitle = settingsJson.optString("appTitle", "Redline").ifBlank { "Redline" },
                     logoUri = settingsJson.optString("logoUri").ifBlank { null },
+                    splashUri = settingsJson.optString("splashUri").ifBlank { null },
                     backgroundColor = settingsJson.optString("backgroundColor", "#0F0F0F").ifBlank { "#0F0F0F" },
                     selectorColor = settingsJson.optString("selectorColor", "#FFFFFF").ifBlank { "#FFFFFF" },
                     panelOpacity = settingsJson.optDouble("panelOpacity", 0.7).toFloat().coerceIn(0.15f, 1f),
@@ -87,6 +88,7 @@ class LibraryStore(private val context: Context) {
                 .put("scrim", state.settings.scrim.toDouble())
                 .put("appTitle", state.settings.appTitle)
                 .put("logoUri", state.settings.logoUri ?: "")
+                .put("splashUri", state.settings.splashUri ?: "")
                 .put("backgroundColor", state.settings.backgroundColor)
                 .put("selectorColor", state.settings.selectorColor)
                 .put("panelOpacity", state.settings.panelOpacity.toDouble())

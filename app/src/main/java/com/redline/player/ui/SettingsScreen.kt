@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -43,16 +44,25 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -65,6 +75,7 @@ import com.redline.player.data.FolderEntry
 import com.redline.player.data.Settings
 import com.redline.player.data.UserGif
 import com.redline.player.data.usesGif
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -77,6 +88,8 @@ fun SettingsScreen(
     onRemoveGif: (String) -> Unit,
     onPickLogo: () -> Unit,
     onClearLogo: () -> Unit,
+    onPickSplash: () -> Unit,
+    onClearSplash: () -> Unit,
     onAddFolder: () -> Unit,
     onExcludeFolder: () -> Unit,
     onRemoveFolder: (String) -> Unit,
@@ -91,15 +104,38 @@ fun SettingsScreen(
     var rowDraft by remember { mutableStateOf("") }
     var page by remember { mutableStateOf<String?>(null) }
     val panelAlpha = settings.panelOpacity.coerceIn(0.15f, 1f)
+    val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val anchor = remember { FocusRequester() }
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     BackHandler(enabled = page != null) { page = null }
+    LaunchedEffect(page) {
+        scroll.scrollTo(0)
+        kotlinx.coroutines.delay(50)
+        runCatching { anchor.requestFocus() }
+    }
     Column(
         Modifier
             .fillMaxHeight()
+            .heightIn(max = screenHeight)
             .fillMaxWidth()
             .widthIn(max = panelMax)
             .background(Surface.copy(alpha = panelAlpha))
-            .pointerInput(Unit) { detectTapGestures { } }
-            .verticalScroll(rememberScrollState())
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                val direction = when (event.key) {
+                    Key.DirectionDown -> FocusDirection.Down
+                    Key.DirectionUp -> FocusDirection.Up
+                    else -> return@onPreviewKeyEvent false
+                }
+                val moved = focusManager.moveFocus(direction)
+                if (!moved) {
+                    scope.launch { scroll.scrollBy(if (direction == FocusDirection.Down) 220f else -220f) }
+                }
+                true
+            }
+            .verticalScroll(scroll)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -126,11 +162,11 @@ fun SettingsScreen(
                 "Back",
                 color = Color.White,
                 fontSize = 14.sp,
-                modifier = Modifier.tvFocus().clickable { page = null }.padding(vertical = 6.dp),
+                modifier = Modifier.focusRequester(anchor).tvFocus().clickable { page = null }.padding(vertical = 6.dp),
             )
         } else {
             Text("Pick a section. Back closes settings.", color = SoftRed, fontSize = 12.sp)
-            MenuRow("Theming", "Name, logo, colors, background") { page = "theming" }
+            MenuRow("Theming", "Name, logo, colors, splash", anchor) { page = "theming" }
             MenuRow("Library", "Folders and rows") { page = "library" }
             MenuRow("Playback", "Seek, speed, picture, repeat") { page = "playback" }
             MenuRow("Subtitles", "Size of the captions") { page = "subtitles" }
@@ -159,6 +195,14 @@ fun SettingsScreen(
             Button(onClick = onPickLogo, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Logo JPG / PNG") }
             if (settings.logoUri != null) {
                 Button(onClick = onClearLogo, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Clear") }
+            }
+        }
+        Section("Splash")
+        Text("PNG, JPG, GIF, or a video. Shown when Redline opens. Select skips it.", color = SoftRed, fontSize = 12.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onPickSplash, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Choose splash") }
+            if (settings.splashUri != null) {
+                Button(onClick = onClearSplash, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Use built-in") }
             }
         }
 
@@ -318,10 +362,16 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun MenuRow(title: String, detail: String, onClick: () -> Unit) {
+private fun MenuRow(
+    title: String,
+    detail: String,
+    focusRequester: FocusRequester? = null,
+    onClick: () -> Unit,
+) {
     Column(
         Modifier
             .fillMaxWidth()
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .tvFocus()
             .clip(RoundedCornerShape(8.dp))
             .background(Surface2.copy(alpha = 0.45f))

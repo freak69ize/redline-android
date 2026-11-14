@@ -2,7 +2,12 @@ package com.redline.player.ui
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -85,12 +90,19 @@ fun RedlineTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = Colors, content = content)
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Modifier.tvFocus(shape: Shape = RoundedCornerShape(10.dp)): Modifier {
     var focused by remember { mutableStateOf(false) }
     val selector = LocalSelectorColor.current
+    val bring = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
     return this
-        .onFocusChanged { focused = it.isFocused }
+        .bringIntoViewRequester(bring)
+        .onFocusChanged {
+            focused = it.isFocused
+            if (it.isFocused) scope.launch { bring.bringIntoView() }
+        }
         .border(3.dp, if (focused) selector else Color.Transparent, shape)
 }
 

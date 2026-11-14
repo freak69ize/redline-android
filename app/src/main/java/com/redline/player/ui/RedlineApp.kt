@@ -68,6 +68,7 @@ fun RedlineApp(
     onAddVideos: () -> Unit,
     onAddGif: () -> Unit,
     onPickLogo: () -> Unit,
+    onPickSplash: () -> Unit,
     onAddFolder: () -> Unit,
     onExcludeFolder: () -> Unit,
     onPip: () -> Unit,
@@ -84,6 +85,7 @@ fun RedlineApp(
     val title = state.settings.shelfTitle()
     var showSplash by remember { mutableStateOf(true) }
     LaunchedEffect(state.screen, state.ready, showSplash) {
+        if (!state.ready) return@LaunchedEffect
         if (showSplash) return@LaunchedEffect
         if (state.screen == Screen.Settings) {
             delay(60)
@@ -96,8 +98,10 @@ fun RedlineApp(
     }
     RedlineTheme {
         CompositionLocalProvider(LocalSelectorColor provides colorFromHex(state.settings.selectorColor)) {
-        if (showSplash) {
-            SplashScreen(onFinished = { showSplash = false })
+        if (!state.ready) {
+            Box(Modifier.fillMaxSize().background(Color.Black))
+        } else if (showSplash) {
+            SplashScreen(state.settings.splashUri, onFinished = { showSplash = false })
         } else Box(Modifier.fillMaxSize().background(bg)) {
             val model = backdropModel(state.settings, state.gifs)
             if (model != null && state.screen != Screen.Player) {
@@ -186,6 +190,8 @@ fun RedlineApp(
                     onRemoveGif = vm::removeGif,
                     onPickLogo = onPickLogo,
                     onClearLogo = vm::clearLogo,
+                    onPickSplash = onPickSplash,
+                    onClearSplash = vm::clearSplash,
                     onAddFolder = onAddFolder,
                     onExcludeFolder = onExcludeFolder,
                     onRemoveFolder = vm::removeFolder,
