@@ -484,8 +484,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun setSplash(uri: Uri) {
         viewModelScope.launch {
             val mime = getApplication<Application>().contentResolver.getType(uri).orEmpty()
-            val name = withContext(Dispatchers.IO) { store.readDisplayName(uri) }
-            if (!isSplash(mime, name)) return@launch
+            val ok = withContext(Dispatchers.IO) {
+                val name = store.readDisplayName(uri)
+                isSplash(mime, name, uri)
+            }
+            if (!ok) return@launch
             val previous = _state.value.settings.splashUri
             takeGrant(uri)
             if (previous != null && previous != uri.toString()) releaseGrant(previous)
@@ -583,10 +586,17 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         return ext == "jpg" || ext == "jpeg" || ext == "png"
     }
 
-    private fun isSplash(mime: String, name: String): Boolean {
-        if (mime.startsWith("video/") || mime == "image/gif" || isLogo(mime, name)) return true
+    private fun isSplash(mime: String, name: String, uri: Uri): Boolean {
+        val kind = mime.lowercase()
+        if (kind.startsWith("video/") || kind.startsWith("image/")) return true
         val ext = name.substringAfterLast('.', "").lowercase()
-        return ext in setOf("gif", "jpg", "jpeg", "png", "webp", "mp4", "mkv", "webm", "mov", "m4v", "avi", "3gp")
+        if (ext in setOf("gif", "jpg", "jpeg", "png", "webp", "mp4", "mkv", "webm", "mov", "m4v", "avi", "3gp")) return true
+        val header = ByteArray(6)
+        val read = getApplication<Application>().contentResolver.openInputStream(uri)?.use { it.read(header) } ?: return false
+        if (read >= 3 && header[0] == 'G'.code.toByte() && header[1] == 'I'.code.toByte() && header[2] == 'F'.code.toByte()) return true
+        if (read >= 2 && header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte()) return true
+        if (read >= 4 && header[0] == 0x89.toByte() && header[1] == 'P'.code.toByte()) return true
+        return false
     }
 
     companion object {

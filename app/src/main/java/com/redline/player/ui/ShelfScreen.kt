@@ -161,6 +161,7 @@ private fun VideoCard(
     onFocus: () -> Unit,
 ) {
     var focused by remember(video.uri) { mutableStateOf(false) }
+    val selector = LocalSelectorColor.current
     val progress = if (video.durationMs > 0 && video.positionMs > 0) {
         (video.positionMs.toFloat() / video.durationMs.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -175,7 +176,7 @@ private fun VideoCard(
                 if (now && !focused) onFocus()
                 focused = now
             }
-            .border(3.dp, if (focused) Color.White else Color.Transparent, RoundedCornerShape(12.dp))
+            .border(3.dp, if (focused) selector else Color.Transparent, RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
             .combinedClickable(onClick = onOpen, onLongClick = onLongPress)
             .padding(3.dp),
