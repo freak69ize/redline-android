@@ -1,5 +1,6 @@
 package com.redline.player.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -88,26 +89,54 @@ fun SettingsScreen(
     panelMax: Dp = 560.dp,
 ) {
     var rowDraft by remember { mutableStateOf("") }
+    var page by remember { mutableStateOf<String?>(null) }
+    val panelAlpha = settings.panelOpacity.coerceIn(0.15f, 1f)
+    BackHandler(enabled = page != null) { page = null }
     Column(
         Modifier
             .fillMaxHeight()
             .fillMaxWidth()
             .widthIn(max = panelMax)
-            .background(Surface)
+            .background(Surface.copy(alpha = panelAlpha))
             .pointerInput(Unit) { detectTapGestures { } }
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Settings", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text(
+                when (page) {
+                    "theming" -> "Theming"
+                    "library" -> "Library"
+                    "playback" -> "Playback"
+                    "subtitles" -> "Subtitles"
+                    else -> "Settings"
+                },
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
             IconButton(onClick = onClose, modifier = Modifier.focusRequester(closeRequester).tvFocus(CircleShape)) {
                 Icon(Icons.Filled.Close, contentDescription = "Close settings", tint = Color.White)
             }
         }
-        Text("Press Back to close. Select a text box to type.", color = SoftRed, fontSize = 12.sp)
-
-        Section("Shelf")
+        if (page != null) {
+            Text(
+                "Back",
+                color = Color.White,
+                fontSize = 14.sp,
+                modifier = Modifier.tvFocus().clickable { page = null }.padding(vertical = 6.dp),
+            )
+        } else {
+            Text("Pick a section. Back closes settings.", color = SoftRed, fontSize = 12.sp)
+            MenuRow("Theming", "Name, logo, colors, background") { page = "theming" }
+            MenuRow("Library", "Folders and rows") { page = "library" }
+            MenuRow("Playback", "Seek, speed, picture, repeat") { page = "playback" }
+            MenuRow("Subtitles", "Size of the captions") { page = "subtitles" }
+        }
+        if (page == "theming") {
+        Text("The shelf behind this panel shows through.", color = SoftRed, fontSize = 12.sp)
         RedlineTextField(
             value = settings.appTitle,
             onValueChange = { onChange(settings.copy(appTitle = it.take(40))) },
@@ -137,6 +166,20 @@ fun SettingsScreen(
         ColorPicker(settings.backgroundColor) { hex ->
             onChange(settings.copy(backgroundColor = hex, backdrop = "solid"))
         }
+        Section("Selector")
+        ColorPicker(settings.selectorColor) { hex ->
+            onChange(settings.copy(selectorColor = hex))
+        }
+        Text("Settings background  ${(panelAlpha * 100).toInt()}%", color = Color.White, fontSize = 14.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            StepButton("−") {
+                onChange(settings.copy(panelOpacity = (settings.panelOpacity - 0.05f).coerceIn(0.15f, 1f)))
+            }
+            Text("${(panelAlpha * 100).toInt()}%", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            StepButton("+") {
+                onChange(settings.copy(panelOpacity = (settings.panelOpacity + 0.05f).coerceIn(0.15f, 1f)))
+            }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = onAddGif, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Add GIF", color = Color.White) }
             val gif = gifs.firstOrNull { it.uri == settings.gifId } ?: gifs.firstOrNull()
@@ -162,7 +205,9 @@ fun SettingsScreen(
                 }
             }
         }
+        }
 
+        if (page == "library") {
         Section("Folders")
         Text("Add a folder to scan videos. Exclude a folder to leave it out.", color = SoftRed, fontSize = 12.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -227,7 +272,9 @@ fun SettingsScreen(
                 }
             }
         }
+        }
 
+        if (page == "playback") {
         Section("Playback")
         ChoiceLine("Seek", listOf(5_000L to "5s", 10_000L to "10s", 15_000L to "15s", 30_000L to "30s"), settings.seekStepMs) {
             onChange(settings.copy(seekStepMs = it))
@@ -248,11 +295,6 @@ fun SettingsScreen(
             settings.repeatMode,
         ) { onChange(settings.copy(repeatMode = it)) }
         ChoiceLine(
-            "Subtitles",
-            listOf(0.7f to "Small", 1f to "Normal", 1.4f to "Large", 1.8f to "XL"),
-            settings.subtitleScale,
-        ) { onChange(settings.copy(subtitleScale = it)) }
-        ChoiceLine(
             "Sleep",
             listOf(0 to "Off", 15 to "15m", 30 to "30m", 45 to "45m", 60 to "60m", 90 to "90m"),
             settings.sleepMinutes,
@@ -261,7 +303,33 @@ fun SettingsScreen(
         Toggle("Play the next video", settings.autoplayNext) { onChange(settings.copy(autoplayNext = it)) }
         Toggle("Show time remaining", settings.showRemaining) { onChange(settings.copy(showRemaining = it)) }
         Toggle("Ask before removing a video", settings.confirmRemove) { onChange(settings.copy(confirmRemove = it)) }
+        Text("MKV, MP4, AVI, MOV, TS, FLV, and most audio play with hardware decoding. HDR and Dolby Vision play when the TV supports them. Home or PiP shrinks the video.", color = SoftRed, fontSize = 12.sp)
+        }
+
+        if (page == "subtitles") {
+        ChoiceLine(
+            "Subtitles",
+            listOf(0.7f to "Small", 1f to "Normal", 1.4f to "Large", 1.8f to "XL"),
+            settings.subtitleScale,
+        ) { onChange(settings.copy(subtitleScale = it)) }
+        }
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun MenuRow(title: String, detail: String, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .tvFocus()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Surface2.copy(alpha = 0.45f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Text(detail, color = SoftRed, fontSize = 12.sp)
     }
 }
 

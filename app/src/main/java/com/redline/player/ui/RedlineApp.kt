@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -69,6 +70,7 @@ fun RedlineApp(
     onPickLogo: () -> Unit,
     onAddFolder: () -> Unit,
     onExcludeFolder: () -> Unit,
+    onPip: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val focus = LocalFocusManager.current
@@ -80,7 +82,9 @@ fun RedlineApp(
     val tv = isTelevision()
     val bg = colorFromHex(state.settings.backgroundColor)
     val title = state.settings.shelfTitle()
-    LaunchedEffect(state.screen, state.ready) {
+    var showSplash by remember { mutableStateOf(true) }
+    LaunchedEffect(state.screen, state.ready, showSplash) {
+        if (showSplash) return@LaunchedEffect
         if (state.screen == Screen.Settings) {
             delay(60)
             runCatching { settingsFocus.requestFocus() }
@@ -91,7 +95,10 @@ fun RedlineApp(
         }
     }
     RedlineTheme {
-        Box(Modifier.fillMaxSize().background(bg)) {
+        CompositionLocalProvider(LocalSelectorColor provides colorFromHex(state.settings.selectorColor)) {
+        if (showSplash) {
+            SplashScreen(onFinished = { showSplash = false })
+        } else Box(Modifier.fillMaxSize().background(bg)) {
             val model = backdropModel(state.settings, state.gifs)
             if (model != null && state.screen != Screen.Player) {
                 AsyncImage(
@@ -166,7 +173,7 @@ fun RedlineApp(
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(Black.copy(alpha = 0.55f))
+                        .background(Black.copy(alpha = 0.28f))
                         .clickable(interactionSource = scrimClicks, indication = null, onClick = { vm.handleBack() })
                         .focusProperties { canFocus = false },
                 )
@@ -220,6 +227,8 @@ fun RedlineApp(
                         onSleep = vm::closePlayer,
                         onProgress = { vm.savePosition(playing.uri, it) },
                         onFavorite = { vm.toggleFavorite(playing.uri) },
+                        onPip = onPip,
+                        pip = state.pip,
                         onChrome = vm::noteChrome,
                     )
                 }
@@ -236,7 +245,7 @@ fun RedlineApp(
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.72f))
+                        .background(Color.Black.copy(alpha = 0.25f))
                         .focusProperties { canFocus = false },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -245,7 +254,7 @@ fun RedlineApp(
                             .width(340.dp)
                             .heightIn(max = 460.dp)
                             .verticalScroll(rememberScrollState())
-                            .background(Surface, RoundedCornerShape(12.dp))
+                            .background(Surface.copy(alpha = state.settings.panelOpacity.coerceIn(0.15f, 1f)), RoundedCornerShape(12.dp))
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -291,6 +300,7 @@ fun RedlineApp(
                     }
                 }
             }
+        }
         }
     }
 }

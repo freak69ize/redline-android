@@ -40,6 +40,8 @@ class LibraryStore(private val context: Context) {
                     appTitle = settingsJson.optString("appTitle", "Redline").ifBlank { "Redline" },
                     logoUri = settingsJson.optString("logoUri").ifBlank { null },
                     backgroundColor = settingsJson.optString("backgroundColor", "#0F0F0F").ifBlank { "#0F0F0F" },
+                    selectorColor = settingsJson.optString("selectorColor", "#FFFFFF").ifBlank { "#FFFFFF" },
+                    panelOpacity = settingsJson.optDouble("panelOpacity", 0.7).toFloat().coerceIn(0.15f, 1f),
                     seekStepMs = settingsJson.optLong("seekStepMs", 10_000).coerceIn(5_000, 60_000),
                     resumePlayback = settingsJson.optBoolean("resumePlayback", true),
                     playbackSpeed = settingsJson.optDouble("playbackSpeed", 1.0).toFloat().coerceIn(0.5f, 2f),
@@ -86,6 +88,8 @@ class LibraryStore(private val context: Context) {
                 .put("appTitle", state.settings.appTitle)
                 .put("logoUri", state.settings.logoUri ?: "")
                 .put("backgroundColor", state.settings.backgroundColor)
+                .put("selectorColor", state.settings.selectorColor)
+                .put("panelOpacity", state.settings.panelOpacity.toDouble())
                 .put("seekStepMs", state.settings.seekStepMs)
                 .put("resumePlayback", state.settings.resumePlayback)
                 .put("playbackSpeed", state.settings.playbackSpeed.toDouble())
@@ -208,19 +212,23 @@ class LibraryStore(private val context: Context) {
         }
     }
 
-    fun writeThumb(uri: Uri, id: String): String {
+    fun writeThumb(uri: Uri, id: String, durationMs: Long = 0L): String {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, uri)
-            val frame = retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                ?: retriever.getFrameAtTime()
-            if (frame == null) return ""
-            val scaled = Bitmap.createScaledBitmap(frame, 480, 270, true)
-            val out = File(thumbs, "$id.jpg")
-            FileOutputStream(out).use { stream ->
-                scaled.compress(Bitmap.CompressFormat.JPEG, 72, stream)
+            val duration = if (durationMs > 0) durationMs else {
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
             }
-            if (scaled != frame) scaled.recycle()
+            val frame = frameAt(retriever, duration) ?: return ""
+            val software = if (frame.config == Bitmap.Config.ARGB_8888) frame else frame.copy(Bitmap.Config.ARGB_8888, false) ?: frame
+            val scaled = Bitmap.createScaledBitmap(software, 480, 270, true)
+            thumbs.listFiles()?.forEach { old ->
+                if (old.name == "$id.jpg" || old.name.startsWith("$id-")) old.delete()
+            }
+            val out = File(thumbs, "$id-${System.currentTimeMillis()}.jpg")
+            FileOutputStream(out).use { stream -> scaled.compress(Bitmap.CompressFormat.JPEG, 80, stream) }
+            if (scaled != software) scaled.recycle()
+            if (software != frame) software.recycle()
             frame.recycle()
             out.absolutePath
         } catch (_: Exception) {
@@ -228,6 +236,56 @@ class LibraryStore(private val context: Context) {
         } finally {
             retriever.release()
         }
+    }
+
+    private fun frameAt(retriever: MediaMetadataRetriever, durationMs: Long): Bitmap? {
+        val tries = ArrayList<Long>()
+        if (durationMs >= 180_000L) {
+            tries += 210_000L
+            tries += 180_000L
+            tries += minOf(300_000L, durationMs - 2_000L)
+        }
+        if (durationMs > 8_000L) tries += (durationMs * 3L) / 10L
+        tries += 10_000L
+        tries += 1_000L
+        tries += 0L
+        var fallback: Bitmap? = null
+        for (ms in tries.distinct()) {
+            if (durationMs > 0 && ms >= durationMs) continue
+            val frame = retriever.getFrameAtTime(ms * 1000L, MediaMetadataRetriever.OPTION_CLOSEST)
+                ?: continue
+            if (fallback == null) fallback = frame
+            if (!isDim(frame)) {
+                if (fallback != frame) fallback?.recycle()
+                return frame
+            }
+            if (frame != fallback) frame.recycle()
+        }
+        return fallback
+    }
+
+    private fun isDim(frame: Bitmap): Boolean {
+        val sample = if (frame.config == Bitmap.Config.ARGB_8888) frame else frame.copy(Bitmap.Config.ARGB_8888, false) ?: frame
+        var sum = 0L
+        var count = 0
+        val stepX = (sample.width / 10).coerceAtLeast(1)
+        val stepY = (sample.height / 10).coerceAtLeast(1)
+        var y = 0
+        while (y < sample.height) {
+            var x = 0
+            while (x < sample.width) {
+                val pixel = sample.getPixel(x, y)
+                val r = (pixel shr 16) and 0xff
+                val g = (pixel shr 8) and 0xff
+                val b = pixel and 0xff
+                sum += r + g + b
+                count++
+                x += stepX
+            }
+            y += stepY
+        }
+        if (sample != frame) sample.recycle()
+        return count == 0 || sum / count < 36
     }
 
     private fun walk(node: DocumentFile, depth: Int, skip: List<String>, out: MutableList<FoundVideo>) {
@@ -245,7 +303,7 @@ class LibraryStore(private val context: Context) {
     }
 
     private fun isVideoDoc(name: String?, mime: String?): Boolean {
-        if (mime != null && mime.startsWith("video/")) return true
+        if (mime != null && (mime.startsWith("video/") || mime.startsWith("audio/"))) return true
         val ext = name?.substringAfterLast('.', "")?.lowercase().orEmpty()
         return ext in VIDEO_EXT
     }
@@ -335,6 +393,10 @@ class LibraryStore(private val context: Context) {
     }
 
     companion object {
-        private val VIDEO_EXT = setOf("mp4", "m4v", "webm", "mov", "mkv", "avi", "3gp", "ts", "m2ts", "ogv")
+        private val VIDEO_EXT = setOf(
+            "mp4", "m4v", "mov", "mkv", "avi", "3gp", "3g2", "flv", "wmv", "asf", "ts", "m2ts", "mts",
+            "webm", "mpg", "mpeg", "vob", "ogv", "divx",
+            "mp3", "m4a", "aac", "flac", "wav", "ogg", "oga", "opus", "wma", "ac3", "eac3",
+        )
     }
 }

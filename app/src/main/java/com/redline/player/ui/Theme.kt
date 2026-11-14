@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +27,8 @@ val Surface2 = Color(0xFF1E1E1E)
 val Ink = Color(0xFFF4F4F5)
 val Muted = Color(0xFFA3A3A3)
 val Line = Color(0xFF2C2C2C)
+
+val LocalSelectorColor = staticCompositionLocalOf { Color.White }
 
 private val Colors = darkColorScheme(
     primary = Red,
@@ -85,9 +88,10 @@ fun RedlineTheme(content: @Composable () -> Unit) {
 @Composable
 fun Modifier.tvFocus(shape: Shape = RoundedCornerShape(10.dp)): Modifier {
     var focused by remember { mutableStateOf(false) }
+    val selector = LocalSelectorColor.current
     return this
         .onFocusChanged { focused = it.isFocused }
-        .border(3.dp, if (focused) Color.White else Color.Transparent, shape)
+        .border(3.dp, if (focused) selector else Color.Transparent, shape)
 }
 
 @Composable

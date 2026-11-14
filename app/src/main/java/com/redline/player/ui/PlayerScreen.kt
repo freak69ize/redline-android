@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.view.LayoutInflater
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,7 +48,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
@@ -76,16 +80,42 @@ fun PlayerScreen(
     onSleep: () -> Unit,
     onProgress: (Long) -> Unit,
     onFavorite: () -> Unit,
+    onPip: () -> Unit,
+    pip: Boolean,
     onChrome: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val exo = remember(uri) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(uri))
-            prepare()
-            if (resume && startMs > 1_000L) seekTo(startMs)
-            playWhenReady = true
+        val renderers = DefaultRenderersFactory(context)
+            .setEnableDecoderFallback(true)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        val tracks = DefaultTrackSelector(context).apply {
+            parameters = buildUponParameters()
+                .setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
+                .setMaxVideoBitrate(Int.MAX_VALUE)
+                .setForceHighestSupportedBitrate(true)
+                .setExceedRendererCapabilitiesIfNecessary(true)
+                .setExceedVideoConstraintsIfNecessary(true)
+                .setAllowVideoMixedMimeTypeAdaptiveness(true)
+                .setAllowAudioMixedMimeTypeAdaptiveness(true)
+                .build()
         }
+        val load = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(15_000, 60_000, 1_000, 2_000)
+            .build()
+        ExoPlayer.Builder(context)
+            .setRenderersFactory(renderers)
+            .setTrackSelector(tracks)
+            .setLoadControl(load)
+            .build()
+            .apply {
+                val item = MediaItem.Builder().setUri(uri)
+                mimeFor(uri)?.let { item.setMimeType(it) }
+                setMediaItem(item.build())
+                prepare()
+                if (resume && startMs > 1_000L) seekTo(startMs)
+                playWhenReady = true
+            }
     }
     var position by remember(uri) { mutableLongStateOf(if (resume) startMs else 0L) }
     var showControls by remember(uri) { mutableStateOf(true) }
@@ -195,10 +225,7 @@ fun PlayerScreen(
                 styleSubtitles(view, subtitleScale)
             },
         )
-        if (showControls) {
-            Column(
-                Modifier
-                    .align(Alignment.BottomCenter)
+        if (showControls && !pip) {
                     .fillMaxWidth()
                     .background(Color.Black.copy(alpha = 0.45f))
                     .padding(horizontal = 24.dp, vertical = 16.dp),
@@ -212,6 +239,15 @@ fun PlayerScreen(
                         modifier = Modifier.size(28.dp),
                     )
                 }
+                Text(
+                    "PiP",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .tvFocus()
+                        .clickable(onClick = onPip)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
                         onClick = { if (exo.isPlaying) exo.pause() else exo.play() },
@@ -261,6 +297,31 @@ fun PlayerScreen(
                 }
             }
         }
+    }
+}
+
+private fun mimeFor(uri: String): String? {
+    val decoded = android.net.Uri.decode(uri).lowercase()
+    val ext = decoded.substringAfterLast('.', "")
+    if ('.' !in decoded.substringAfterLast('/')) return null
+    return when (ext) {
+        "mkv" -> "video/x-matroska"
+        "mp4", "m4v" -> "video/mp4"
+        "mov" -> "video/quicktime"
+        "3gp", "3g2" -> "video/3gpp"
+        "avi" -> "video/x-msvideo"
+        "flv" -> "video/x-flv"
+        "wmv", "asf" -> "video/x-ms-wmv"
+        "ts", "m2ts", "mts" -> "video/mp2t"
+        "webm" -> "video/webm"
+        "mpg", "mpeg" -> "video/mpeg"
+        "mp3" -> "audio/mpeg"
+        "m4a", "aac" -> "audio/mp4"
+        "flac" -> "audio/flac"
+        "wav" -> "audio/wav"
+        "ogg", "oga", "opus" -> "audio/ogg"
+        "wma" -> "audio/x-ms-wma"
+        else -> null
     }
 }
 

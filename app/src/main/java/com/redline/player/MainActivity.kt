@@ -1,7 +1,11 @@
 package com.redline.player
 
 import android.content.Intent
+import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
+import android.app.PictureInPictureParams
+import android.util.Rational
 import android.view.KeyEvent
 import android.view.ViewConfiguration
 import androidx.activity.ComponentActivity
@@ -66,8 +70,26 @@ class MainActivity : ComponentActivity() {
                     folderExcluded = true
                     folderPicker.launch(null)
                 },
+                onPip = { enterPip() },
             )
         }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (vm.state.value.screen == Screen.Player) enterPip()
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (::vm.isInitialized) vm.setPip(isInPictureInPictureMode)
+    }
+
+    private fun enterPip() {
+        if (!::vm.isInitialized || vm.state.value.screen != Screen.Player) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || isInPictureInPictureMode) return
+        val params = PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()
+        enterPictureInPictureMode(params)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

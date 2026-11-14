@@ -47,6 +47,8 @@ data class Settings(
     val appTitle: String = "Redline",
     val logoUri: String? = null,
     val backgroundColor: String = "#0F0F0F",
+    val selectorColor: String = "#FFFFFF",
+    val panelOpacity: Float = 0.7f,
     val seekStepMs: Long = 10_000,
     val resumePlayback: Boolean = true,
     val playbackSpeed: Float = 1f,
@@ -78,6 +80,7 @@ data class UiState(
     val confirmUri: String? = null,
     val ready: Boolean = false,
     val busy: Boolean = false,
+    val pip: Boolean = false,
 )
 
 sealed interface PlayerCommand {

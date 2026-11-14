@@ -40,6 +40,30 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val loaded = withContext(Dispatchers.IO) { store.load() }
             _state.value = loaded.copy(ready = true, screen = Screen.Shelf)
+            refreshThumbs(loaded.videos)
+        }
+    }
+
+    fun setPip(active: Boolean) {
+        _state.value = _state.value.copy(pip = active)
+    }
+
+    private fun refreshThumbs(videos: List<VideoItem>) {
+        viewModelScope.launch {
+            for (video in videos) {
+                val id = video.uri.hashCode().toUInt().toString(16)
+                val path = withContext(Dispatchers.IO) {
+                    store.writeThumb(Uri.parse(video.uri), id, video.durationMs)
+                }
+                if (path.isBlank()) continue
+                mutate { current ->
+                    current.copy(
+                        videos = current.videos.map { item ->
+                            if (item.uri == video.uri) item.copy(thumbPath = path) else item
+                        },
+                    )
+                }
+            }
         }
     }
 
