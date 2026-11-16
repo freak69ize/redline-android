@@ -163,13 +163,6 @@ fun RedlineApp(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            Text(
-                                "Hold Select on a video to favorite, move, rename, or delete.",
-                                color = LocalSelectorColor.current,
-                                fontSize = if (tv) 14.sp else 12.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
                         }
                     }
                     if (!state.ready) {
