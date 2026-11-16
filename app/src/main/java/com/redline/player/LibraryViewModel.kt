@@ -39,8 +39,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch {
             val loaded = withContext(Dispatchers.IO) { store.load() }
-            _state.value = loaded.copy(ready = true, screen = Screen.Shelf)
-            refreshThumbs(loaded.videos)
+            val ready = withContext(Dispatchers.IO) { localizeBackdrop(loaded) }
+            _state.value = ready.copy(ready = true, screen = Screen.Shelf)
+            refreshThumbs(ready.videos)
         }
     }
 
@@ -510,11 +511,17 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val mime = getApplication<Application>().contentResolver.getType(uri).orEmpty()
             val name = withContext(Dispatchers.IO) { store.readDisplayName(uri) }
-            if (mime != "image/gif" && !name.endsWith(".gif", ignoreCase = true)) return@launch
+            if (!isBackdrop(mime, name)) return@launch
             val previous = _state.value.gifs.firstOrNull()?.uri
             takeGrant(uri)
-            if (previous != null && previous != uri.toString()) releaseGrant(previous)
-            val gif = UserGif(uri.toString(), name.substringBeforeLast('.'))
+            val stored = withContext(Dispatchers.IO) { copyBackdrop(uri, name, mime) }
+            val saved = if (stored.length() > 0L) stored.absolutePath else uri.toString()
+            if (saved != uri.toString()) releaseGrant(uri.toString())
+            if (previous != null && previous != saved) {
+                releaseGrant(previous)
+                withContext(Dispatchers.IO) { deleteBackdropFile(previous) }
+            }
+            val gif = UserGif(saved, name.substringBeforeLast('.').ifBlank { name })
             mutate { current ->
                 current.copy(
                     gifs = listOf(gif),
@@ -527,6 +534,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun removeGif(uri: String) {
         viewModelScope.launch {
             releaseGrant(uri)
+            withContext(Dispatchers.IO) { deleteBackdropFile(uri) }
             mutate { current ->
                 current.copy(
                     gifs = current.gifs.filterNot { it.uri == uri },
@@ -538,6 +546,55 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         }
+    }
+
+    private fun localizeBackdrop(state: UiState): UiState {
+        val gif = state.gifs.firstOrNull() ?: return state
+        if (!gif.uri.startsWith("content:")) return state
+        val file = copyBackdrop(Uri.parse(gif.uri), gif.name, "")
+        if (file.length() <= 0L) return state
+        val updated = gif.copy(uri = file.absolutePath)
+        val next = state.copy(
+            gifs = listOf(updated),
+            settings = state.settings.copy(gifId = updated.uri, backdrop = "gif"),
+        )
+        store.save(next)
+        return next
+    }
+
+    private fun copyBackdrop(uri: Uri, name: String, mime: String): File {
+        val app = getApplication<Application>()
+        val header = ByteArray(8)
+        val read = app.contentResolver.openInputStream(uri)?.use { it.read(header) } ?: 0
+        val ext = when {
+            mime.contains("png", true) || name.endsWith(".png", true) ||
+                (read >= 4 && header[0] == 0x89.toByte()) -> "png"
+            mime.contains("jpeg", true) || mime.contains("jpg", true) ||
+                name.endsWith(".jpg", true) || name.endsWith(".jpeg", true) ||
+                (read >= 2 && header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte()) -> "jpg"
+            else -> "gif"
+        }
+        val dir = File(app.filesDir, "backdrop")
+        dir.mkdirs()
+        val out = File(dir, "backdrop.$ext")
+        dir.listFiles()?.forEach { if (it.absolutePath != out.absolutePath) it.delete() }
+        app.contentResolver.openInputStream(uri)?.use { input ->
+            out.outputStream().use { input.copyTo(it) }
+        }
+        return out
+    }
+
+    private fun deleteBackdropFile(uri: String) {
+        if (uri.startsWith("content:")) return
+        val file = File(uri)
+        if (file.isFile && file.parentFile?.name == "backdrop") file.delete()
+    }
+
+    private fun isBackdrop(mime: String, name: String): Boolean {
+        val kind = mime.lowercase()
+        if (kind == "image/gif" || kind == "image/png" || kind == "image/jpeg" || kind == "image/jpg") return true
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return ext in setOf("gif", "png", "jpg", "jpeg")
     }
 
     private fun send(command: PlayerCommand) {

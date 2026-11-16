@@ -54,8 +54,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import android.os.Build
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.platform.LocalConfiguration
 import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
 import coil.request.ImageRequest
+import java.io.File
 import com.redline.player.LibraryViewModel
 import com.redline.player.data.Screen
 import com.redline.player.data.backdropModel
@@ -105,10 +110,25 @@ fun RedlineApp(
         } else Box(Modifier.fillMaxSize().background(bg)) {
             val model = backdropModel(state.settings, state.gifs)
             if (model != null && state.screen != Screen.Player) {
+                val gif = (model as? File)?.extension.equals("gif", true) ||
+                    model.toString().endsWith(".gif", true)
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(model)
-                        .decoderFactory(GifDecoder.Factory())
+                        .allowHardware(!gif)
+                        .crossfade(false)
+                        .size(1280, 720)
+                        .apply {
+                            if (gif) {
+                                decoderFactory(
+                                    if (Build.VERSION.SDK_INT >= 28) {
+                                        ImageDecoderDecoder.Factory()
+                                    } else {
+                                        GifDecoder.Factory()
+                                    },
+                                )
+                            }
+                        }
                         .build(),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
@@ -145,7 +165,7 @@ fun RedlineApp(
                             )
                             Text(
                                 "Hold Select on a video to favorite, move, rename, or delete.",
-                                color = Muted,
+                                color = LocalSelectorColor.current,
                                 fontSize = if (tv) 14.sp else 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -181,28 +201,35 @@ fun RedlineApp(
                         .clickable(interactionSource = scrimClicks, indication = null, onClick = { vm.handleBack() })
                         .focusProperties { canFocus = false },
                 )
-                SettingsScreen(
-                    settings = state.settings,
-                    gifs = state.gifs,
-                    folders = state.folders,
-                    onChange = vm::updateSettings,
-                    onAddGif = onAddGif,
-                    onRemoveGif = vm::removeGif,
-                    onPickLogo = onPickLogo,
-                    onClearLogo = vm::clearLogo,
-                    onPickSplash = onPickSplash,
-                    onClearSplash = vm::clearSplash,
-                    onAddFolder = onAddFolder,
-                    onExcludeFolder = onExcludeFolder,
-                    onRemoveFolder = vm::removeFolder,
-                    onAddRow = vm::addRow,
-                    onRenameRow = vm::renameRow,
-                    onMoveRow = vm::moveRow,
-                    onDeleteRow = vm::deleteRow,
-                    onClose = { vm.handleBack() },
-                    closeRequester = settingsFocus,
-                    panelMax = if (tv) 640.dp else 480.dp,
-                )
+                Box(
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .width(LocalConfiguration.current.screenWidthDp.dp / 2),
+                ) {
+                    SettingsScreen(
+                        settings = state.settings,
+                        gifs = state.gifs,
+                        folders = state.folders,
+                        onChange = vm::updateSettings,
+                        onAddGif = onAddGif,
+                        onRemoveGif = vm::removeGif,
+                        onPickLogo = onPickLogo,
+                        onClearLogo = vm::clearLogo,
+                        onPickSplash = onPickSplash,
+                        onClearSplash = vm::clearSplash,
+                        onAddFolder = onAddFolder,
+                        onExcludeFolder = onExcludeFolder,
+                        onRemoveFolder = vm::removeFolder,
+                        onAddRow = vm::addRow,
+                        onRenameRow = vm::renameRow,
+                        onMoveRow = vm::moveRow,
+                        onDeleteRow = vm::deleteRow,
+                        onClose = { vm.handleBack() },
+                        closeRequester = settingsFocus,
+                        panelMax = LocalConfiguration.current.screenWidthDp.dp / 2,
+                    )
+                }
             }
             if (state.screen != Screen.Player && !tv) {
                 OnScreenDpad(
@@ -272,7 +299,7 @@ fun RedlineApp(
                             if (menuVideo.favorite) "Remove from favorites" else "Add to favorites",
                             enabled = state.menuArmed,
                         ) { vm.toggleFavorite(menuVideo.uri) }
-                        Text("Move to a row", color = SoftRed, fontSize = 12.sp)
+                        Text("Move to a row", color = LocalSelectorColor.current, fontSize = 12.sp)
                         moveRows.forEach { row ->
                             DialogButton("Move to ${row.name}", enabled = state.menuArmed) {
                                 vm.moveVideoToRow(menuVideo.uri, row.id)
@@ -300,7 +327,7 @@ fun RedlineApp(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text("Delete ${confirmVideo.title} from the player?", color = Color.White, fontSize = 16.sp)
-                        Text("The file stays on the device.", color = SoftRed, fontSize = 13.sp)
+                        Text("The file stays on the device.", color = LocalSelectorColor.current, fontSize = 13.sp)
                         DialogButton("Delete") { vm.remove(confirmVideo.uri) }
                         DialogButton("Cancel") { vm.handleBack() }
                     }

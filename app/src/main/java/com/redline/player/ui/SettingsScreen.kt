@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -119,8 +120,7 @@ fun SettingsScreen(
         Modifier
             .fillMaxHeight()
             .heightIn(max = screenHeight)
-            .fillMaxWidth()
-            .widthIn(max = panelMax)
+            .width(panelMax)
             .background(Surface.copy(alpha = panelAlpha))
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -166,14 +166,14 @@ fun SettingsScreen(
                 modifier = Modifier.focusRequester(anchor).tvFocus().clickable { page = null }.padding(vertical = 6.dp),
             )
         } else {
-            Text("Pick a section. Back closes settings.", color = SoftRed, fontSize = 12.sp)
+            Text("Pick a section. Back closes settings.", color = LocalSelectorColor.current, fontSize = 12.sp)
             MenuRow("Theming", "Name, logo, colors, splash", anchor) { page = "theming" }
             MenuRow("Library", "Folders and rows") { page = "library" }
             MenuRow("Playback", "Seek, speed, picture, repeat") { page = "playback" }
             MenuRow("Subtitles", "Size of the captions") { page = "subtitles" }
         }
         if (page == "theming") {
-        Text("The shelf behind this panel shows through.", color = SoftRed, fontSize = 12.sp)
+        Text("The shelf behind this panel shows through.", color = LocalSelectorColor.current, fontSize = 12.sp)
         RedlineTextField(
             value = settings.appTitle,
             onValueChange = { onChange(settings.copy(appTitle = it.take(40))) },
@@ -199,7 +199,7 @@ fun SettingsScreen(
             }
         }
         Section("Splash")
-        Text("PNG, JPG, GIF, or a video. Shown when Redline opens. Select skips it.", color = SoftRed, fontSize = 12.sp)
+        Text("PNG, JPG, GIF, or a video. Shown when Redline opens. Select skips it.", color = LocalSelectorColor.current, fontSize = 12.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onPickSplash, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Choose splash") }
             if (settings.splashUri != null) {
@@ -226,7 +226,7 @@ fun SettingsScreen(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = onAddGif, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Add GIF", color = Color.White) }
+            Button(onClick = onAddGif, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Add GIF / JPG / PNG", color = Color.White) }
             val gif = gifs.firstOrNull { it.uri == settings.gifId } ?: gifs.firstOrNull()
             if (gif != null && settings.usesGif()) {
                 Text(gif.name, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
@@ -240,7 +240,7 @@ fun SettingsScreen(
             }
         }
         if (settings.usesGif()) {
-            Text("Dim GIF  ${(settings.scrim * 100).toInt()}%", color = SoftRed, fontSize = 12.sp)
+            Text("Dim background  ${(settings.scrim * 100).toInt()}%", color = LocalSelectorColor.current, fontSize = 12.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StepButton("Dim −") {
                     onChange(settings.copy(scrim = (settings.scrim - 0.1f).coerceIn(0f, 0.8f)))
@@ -254,7 +254,7 @@ fun SettingsScreen(
 
         if (page == "library") {
         Section("Folders")
-        Text("Add a folder to scan videos. Exclude a folder to leave it out.", color = SoftRed, fontSize = 12.sp)
+        Text("Add a folder to scan videos. Exclude a folder to leave it out.", color = LocalSelectorColor.current, fontSize = 12.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onAddFolder, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Add folder") }
             Button(onClick = onExcludeFolder, modifier = Modifier.tvFocus(), colors = darkButton()) { Text("Exclude folder") }
@@ -277,7 +277,7 @@ fun SettingsScreen(
         }
 
         Section("Rows")
-        Text("Create a row, rename it, then move it. Hold a thumbnail for favorite, move, rename, or delete.", color = SoftRed, fontSize = 12.sp)
+        Text("Create a row, rename it, then move it. Hold a thumbnail for favorite, move, rename, or delete.", color = LocalSelectorColor.current, fontSize = 12.sp)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             RedlineTextField(
                 value = rowDraft,
@@ -348,7 +348,7 @@ fun SettingsScreen(
         Toggle("Play the next video", settings.autoplayNext) { onChange(settings.copy(autoplayNext = it)) }
         Toggle("Show time remaining", settings.showRemaining) { onChange(settings.copy(showRemaining = it)) }
         Toggle("Ask before removing a video", settings.confirmRemove) { onChange(settings.copy(confirmRemove = it)) }
-        Text("MKV, MP4, AVI, MOV, TS, FLV, and most audio play with hardware decoding. HDR and Dolby Vision play when the TV supports them. Home or PiP shrinks the video.", color = SoftRed, fontSize = 12.sp)
+        Text("MKV, MP4, AVI, MOV, TS, FLV, and most audio play with hardware decoding. HDR and Dolby Vision play when the TV supports them. Home or PiP shrinks the video.", color = LocalSelectorColor.current, fontSize = 12.sp)
         }
 
         if (page == "subtitles") {
@@ -380,7 +380,7 @@ private fun MenuRow(
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        Text(detail, color = SoftRed, fontSize = 12.sp)
+        Text(detail, color = LocalSelectorColor.current, fontSize = 12.sp)
     }
 }
 
@@ -401,7 +401,7 @@ private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit)
 @Composable
 private fun <T> ChoiceLine(label: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
     Column {
-        Text(label, color = SoftRed, fontSize = 12.sp)
+        Text(label, color = LocalSelectorColor.current, fontSize = 12.sp)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             options.forEach { (value, name) ->
                 val on = value == selected
@@ -513,7 +513,7 @@ fun RedlineTextField(
                 .clickable { editing = true }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            if (label != null) Text(label, color = SoftRed, fontSize = 11.sp)
+            if (label != null) Text(label, color = LocalSelectorColor.current, fontSize = 11.sp)
             Text(value.ifBlank { " " }, color = Color.White, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     } else {
@@ -557,8 +557,8 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     cursorColor = Color.White,
     focusedBorderColor = Color.White,
     unfocusedBorderColor = Line,
-    focusedLabelColor = SoftRed,
-    unfocusedLabelColor = SoftRed,
+    focusedLabelColor = LocalSelectorColor.current,
+    unfocusedLabelColor = LocalSelectorColor.current,
 )
 
 @Composable

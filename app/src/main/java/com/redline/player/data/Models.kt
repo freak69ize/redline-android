@@ -126,5 +126,7 @@ fun formatBytes(bytes: Long): String {
 
 fun backdropModel(settings: Settings, gifs: List<UserGif>): Any? {
     if (!settings.usesGif()) return null
-    return gifs.firstOrNull { it.uri == settings.gifId }?.uri
+    val raw = gifs.firstOrNull { it.uri == settings.gifId }?.uri ?: return null
+    val file = java.io.File(raw)
+    return if (file.isFile) file else raw
 }

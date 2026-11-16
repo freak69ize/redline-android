@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
             RedlineApp(
                 vm = vm,
                 onAddVideos = { videoPicker.launch(arrayOf("video/*")) },
-                onAddGif = { gifPicker.launch(arrayOf("image/gif")) },
+                onAddGif = { gifPicker.launch(arrayOf("image/gif", "image/png", "image/jpeg")) },
                 onPickLogo = { logoPicker.launch(arrayOf("image/jpeg", "image/png")) },
                 onPickSplash = {
                     splashPicker.launch(arrayOf("image/png", "image/jpeg", "image/gif", "video/*"))
